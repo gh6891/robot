@@ -1,91 +1,115 @@
-from isaacsim import SimulationApp
-
-simulation_app = SimulationApp({"headless": False})
-
-
-from isaacsim.core.utils.nucleus import get_assets_root_path
-# from omni.isaac.core.utils.stage import update_stage
-from isaacsim.core.api import World
-from isaacsim.robot.manipulators.manipulators import SingleManipulator
-# from isaacsim.cortex.framework.robot import CortexUr10
-from isaacsim.robot.manipulators.grippers import ParallelGripper
-from isaacsim.core.utils.stage import add_reference_to_stage
-from isaacsim.core.utils.types import ArticulationAction
-
-from omni.isaac.core.utils.prims import is_prim_path_valid
-from omni.isaac.core.utils.prims import get_all_matching_child_prims
-
+import os
 import numpy as np
 
-my_world = World(stage_units_in_meters=1.0)
-assets_root_path = get_assets_root_path()
-
-# use Isaac Sim provided asset
-robot_asset_path = assets_root_path + "/Isaac/Robots/UR10/ur10e_robotiq2f-140.usd"
-
-add_reference_to_stage(usd_path=robot_asset_path, prim_path="/World/ur10e_robotiq2f_140")
-
-all_prims = get_all_matching_child_prims("/World")
-for prim in all_prims:
-    print(prim.GetPath())
+import matplotlib.pyplot as plt
+import cv2
+import warp as wp
 
 
-# define the gripper
-gripper = ParallelGripper(
-    #We chose the following values while inspecting the articulation
-    end_effector_prim_path="/World/ur10e_robotiq2f_140/Robotiq_2F_140_config/robotiq_base_link",
-    joint_prim_names=["finger_joint", "right_outer_knuckle_joint"],
-    joint_opened_positions=np.array([0, 0]),
-    joint_closed_positions=np.array([0.628, -0.628]),
-    action_deltas=np.array([-0.628, 0.628]),
+
+# from omni.isaac.kit import SimulationApp
+from isaacsim import SimulationApp
+
+config = {
+'width': 1920,
+'height': 1080,
+'headless': False
+}
+simulation_app = SimulationApp(config)
+print(simulation_app.DEFAULT_LAUNCHER_CONFIG)
+
+import isaacsim.replicator as rep
+
+RESOLUTION = (1024, 1024)
+
+OBJ_LOC_MIN = (-50, 5, -50)
+OBJ_LOC_MAX = (50, 5, 50)
+
+CAM_LOC_MIN = (100, 0, -100)
+CAM_LOC_MAX = (100, 100, 100)
+
+SCALE_MIN = 5
+SCALE_MAX = 15
+
+from isaacsim.core.utils.prims import create_prim
+from isaacsim.core.utils.rotations import euler_angles_to_quat
+from isaacsim.core.utils.stage import set_stage_up_axis
+from isaacsim.core.utils.render_product import set_camera_prim_path, get_camera_prim_path
+set_stage_up_axis("y")
+
+# 배경 세팅 (방: Sphere, 바닥: Cylinder)
+create_prim("/World/Room", "Sphere", attributes={"radius": 1e3, "primvars:displayColor": [(1.0, 1.0, 1.0)]})
+create_prim(
+    "/World/Ground",
+    "Cylinder",
+    position=np.array([0.0, -0.5, 0.0]),
+    orientation=euler_angles_to_quat(np.array([90.0, 0.0, 0.0]), degrees=True),
+    attributes={"height": 1, "radius": 1e4, "primvars:displayColor": [(1.0, 1.0, 1.0)]},
 )
-print("Gripper joint names:", gripper.joint_prim_names)
+create_prim("/World/Asset", "Xform")
 
-# raise SystemExit(0)
+# 카메라 설정
+# camera = rep.create.camera()
+set_camera_prim_path("/World/Camera")
+camera = get_camera_prim_path("/World/Camera")
 
+render_product = rep.create.render_product(camera, RESOLUTION)
+# Annotator 설정 (본 예제에서는 rgb만 설정 / bounding box, segmentation, 등 다양한 annotator 설정가능)
+rgb = rep.AnnotatorRegistry.get_annotator("rgb")
+rgb.attach(render_product)
+kit.update()
 
-#define the manipulator
-my_ur10 = my_world.scene.add(SingleManipulator(
-    prim_path="/World/ur10e_robotiq2f_140",
-    name="UR10e",
-    end_effector_prim_name = "ur10e/tool0",
-    gripper=gripper,
-))
+# 두 개의 sphere light 생성
+light1 = rep.create.light(light_type="sphere", position=(-450, 350, 350), scale=100, intensity=30000.0)
+light2 = rep.create.light(light_type="sphere", position=(450, 350, 350), scale=100, intensity=30000.0)
 
+# Replicator randomizer graph 설정
+with rep.new_layer():
+# Replicator on_frame trigger 세팅, on_frame 안에서 랜덤화된 새로운 프레임 생성
+    with rep.trigger.on_frame():
+    # Light 색상 랜덤화
+        with rep.create.group([light1, light2]):
+            rep.modify.attribute("color", rep.distribution.uniform((0.1, 0.1, 0.1), (1.0, 1.0, 1.0)))
+        # 카메라 위치 랜덤화
+        with camera:
+            rep.modify.pose(
+            position=rep.distribution.uniform(CAM_LOC_MIN, CAM_LOC_MAX), look_at=(0, 0, 0)
+            )
+        # 3개의 큐브를 랜덤한 위치와 색상으로 설정
+        for idx in range(3):
+            cube = rep.create.cube(
+                position=rep.distribution.uniform(OBJ_LOC_MIN, OBJ_LOC_MAX),
+                rotation=rep.distribution.uniform((0, -180, 0), (0, 180, 0)),
+                scale=rep.distribution.uniform(SCALE_MIN, SCALE_MAX),
+                material=rep.create.material_omnipbr(diffuse=rep.distribution.uniform((0.1, 0.1, 0.1), (1, 1, 1))),
+                )
+            
+# 예시 이미지 저장할 디렉토리 생성
+out_dir = os.path.join(os.getcwd(), "_out_gen_imgs_cube", "")
+os.makedirs(out_dir, exist_ok=True)
+# Orchestrator: Replicator graph의 실행을 관리하는 클래스
+# Orchestrator를 사용하여 triggering 없이 한 번 실행
+rep.orchestrator.preview()
+# 데이터셋 생성 변수 설정
+num_test_images = 10
 
-#set the default positions of the other gripper joints to be opened so
-#that its out of the way of the joints we want to control when gripping an object for instance.
-joints_default_positions = np.zeros(14)
-joints_default_positions[0] = 0.628
-my_ur10.set_joints_default_state(positions=joints_default_positions)
+# 데이터셋 생성
+for i in range(num_test_images):
+    # Step - trigger a randomization and a render
+    rep.orchestrator.step(rt_subframes=4)
+    # RGB 수집 (추후에 다른 GT 추가 예정)
+    gt = {
+    "rgb": rgb.get_data(device="cuda"),
+    }
+    # RGB 이미지를 torch tensor로 변환 및 alpha channel 제거
+    image = wp.to_torch(gt["rgb"])[..., :3]
+    # 이미지 출력
+    np_image = image.cpu().numpy()
+    np_image = cv2.cvtColor(np_image, cv2.COLOR_RGB2BGR)
+    cv2.imshow("image", np_image)
+    cv2.waitKey(1)
+    # 이미지 저장
+    cv2.imwrite(os.path.join(out_dir, f"image_{i}.png"), np_image)
 
-my_world.scene.add_default_ground_plane()
-my_world.reset()
-
-articulation_controller = my_ur10.get_articulation_controller()
-
-
-i = 0
-while simulation_app.is_running():
-    my_world.step(render=True)
-    if my_world.is_playing():
-        if my_world.current_time_step_index == 0:
-            my_world.reset()
-        i += 1
-        gripper_positions = my_ur10.gripper.get_joint_positions()
-        joints_default_positions[0] = np.sin(i/100) * 0.628
-        actions = ArticulationAction(joint_positions=joints_default_positions)
-        articulation_controller.apply_action(actions)
-        print("i:", i, i//500%2) 
-        if i // 500 % 2 == 0:
-            print("close the gripper")
-            #close the gripper slowly
-            my_ur10.gripper.apply_action(
-                ArticulationAction(joint_positions=[gripper_positions[0] + 0.1, gripper_positions[1] - 0.1]))
-        else :
-            print("open the gripper")
-            #open the gripper slowly
-            my_ur10.gripper.apply_action(
-                ArticulationAction(joint_positions=[gripper_positions[0] - 0.1, gripper_positions[1] + 0.1]))
-
-simulation_app.close()
+rep.orchestrator.stop()
+kit.close()
