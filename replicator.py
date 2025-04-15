@@ -17,7 +17,8 @@ config = {
 simulation_app = SimulationApp(config)
 print(simulation_app.DEFAULT_LAUNCHER_CONFIG)
 
-import isaacsim.replicator as rep
+import omni.replicator.core as rep
+# import isaacsim.replicator as rep
 
 RESOLUTION = (1024, 1024)
 
@@ -53,7 +54,7 @@ render_product = rep.create.render_product(camera, RESOLUTION)
 # Annotator 설정 (본 예제에서는 rgb만 설정 / bounding box, segmentation, 등 다양한 annotator 설정가능)
 rgb = rep.AnnotatorRegistry.get_annotator("rgb")
 rgb.attach(render_product)
-kit.update()
+simulation_app.update()
 
 # 두 개의 sphere light 생성
 light1 = rep.create.light(light_type="sphere", position=(-450, 350, 350), scale=100, intensity=30000.0)
@@ -108,4 +109,4 @@ for i in range(num_test_images):
     cv2.imwrite(os.path.join(out_dir, f"image_{i}.png"), np_image)
 
 rep.orchestrator.stop()
-kit.close()
+simulation_app.close()
