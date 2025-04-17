@@ -7,19 +7,19 @@
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 #
 
-from omni.isaac.core.utils.stage import add_reference_to_stage
-import omni.isaac.core.tasks as tasks
-from omni.isaac.core.utils.nucleus import get_assets_root_path
-from omni.isaac.core.scenes.scene import Scene
-from omni.isaac.core.objects import DynamicCuboid
-from omni.isaac.core.utils.prims import is_prim_path_valid
-from omni.isaac.core.utils.string import find_unique_string_name
-from omni.isaac.core.utils.prims import create_prim, get_prim_path, define_prim
-from omni.isaac.core.utils.stage import get_stage_units
-from omni.isaac.core.materials import PhysicsMaterial
-from omni.isaac.core.prims import RigidPrim, GeometryPrim
-from omni.isaac.sensor import Camera
-from omni.isaac.core.utils.semantics import add_update_semantics
+from isaacsim.core.utils.stage import add_reference_to_stage
+import isaacsim.core.api.tasks as tasks
+from isaacsim.core.utils.nucleus import get_assets_root_path
+from isaacsim.core.api.scenes.scene import Scene
+from isaacsim.core.api.objects.cuboid import DynamicCuboid
+from isaacsim.core.utils.prims import is_prim_path_valid
+from isaacsim.core.utils.string import find_unique_string_name
+from isaacsim.core.utils.prims import create_prim, get_prim_path, define_prim
+from isaacsim.core.utils.stage import get_stage_units
+from isaacsim.core.api.materials.physics_material import PhysicsMaterial
+from isaacsim.core.prims import RigidPrim, GeometryPrim
+from isaacsim.sensors.camera.camera import Camera
+from isaacsim.core.utils.semantics import add_update_semantics
 from utils.robots.ur5e_handeye import UR5eHandeye
 import os, random
 import numpy as np

@@ -1,7 +1,7 @@
-from omni.isaac.core.utils.rotations import euler_angles_to_quat
-from omni.isaac.core.utils.types import ArticulationAction
-from omni.isaac.core.articulations import Articulation
-from omni.isaac.manipulators.grippers.parallel_gripper import ParallelGripper
+from isaacsim.core.utils.rotations import euler_angles_to_quat
+from isaacsim.core.utils.types import ArticulationAction
+from isaacsim.core.prims import SingleArticulation
+from isaacsim.robot.manipulators.grippers.parallel_gripper import ParallelGripper
 # import omni.isaac.manipulators.controllers as manipulators_controllers
 from utils.controllers.RMPFflow_pickplace import RMPFlowController
 from day3.pickplace_controller import PickPlace_Controller
@@ -23,7 +23,7 @@ class PickPlaceController(PickPlace_Controller):
         self,
         name: str,
         gripper: ParallelGripper,
-        robot_articulation: Articulation,
+        robot_articulation: SingleArticulation,
         events_dt: Optional[List[float]] = None,
         end_effector_initial_height: Optional[float] = None,
     ) -> None:
