@@ -79,7 +79,6 @@ state = "APPROACH"
 while simulation_app.is_running():
     # 생성한 world 에서 physics simulation step
     my_world.step(render=True)
-    print(f"==>> init_target_position: {init_target_position}")
     # world가 동작하는 동안 작업 수행
     if my_world.is_playing():# Get transformation
         # gripper에 대한 offset 선언
