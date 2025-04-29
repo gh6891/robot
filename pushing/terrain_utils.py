@@ -26,12 +26,12 @@ def random_uniform_terrain(
 
     """
     if downsampled_scale is None:
-        downsampled_scale = terrain.horizontal_scale
+        downsampled_scale = terrain.horizontal_scale #0.25
 
     # switch parameters to discrete units
-    min_height = int(min_height / terrain.vertical_scale)  #-0.2/ 0.005 = 40
+    min_height = int(min_height / terrain.vertical_scale)  #-0.2/ 0.005 = -40
     max_height = int(max_height / terrain.vertical_scale) #0.2/ 0.005 = 40
-    step = int(step / terrain.vertical_scale) #0.2/ 0.005 = 40
+    step = int(step / terrain.vertical_scale) #1/ 0.005 = 200
 
     heights_range = np.arange(min_height, max_height + step, step)
     height_field_downsampled = np.random.choice(
@@ -42,7 +42,7 @@ def random_uniform_terrain(
         ),
     )
 
-    x = np.linspace(0, terrain.width * terrain.horizontal_scale, height_field_downsampled.shape[0])
+    x = np.linspace(0, terrain.width * terrain.horizontal_scale, height_field_downsampled.shape[0]) #(0, 48)
     y = np.linspace(0, terrain.length * terrain.horizontal_scale, height_field_downsampled.shape[1])
 
     f = interpolate.RectBivariateSpline(y, x, height_field_downsampled)

@@ -43,6 +43,7 @@ scene.add(cube)
 
 # Add robot
 robot_usd_path = os.path.join(lecture_dir, "utils/assets/ur5e_handeye_gripper.usd")
+print(f"==>> robot_usd_path: {robot_usd_path}")
 my_robot = UR5eHandeye(
 prim_path="/World/ur5e", # should be unique
 name="my_ur5e",
@@ -51,6 +52,7 @@ usd_path=robot_usd_path,
 activate_camera=False,
 )
 scene.add(my_robot)
+print("==>> my_robot prim path: ", my_robot)
 
 ############################### Pick place controller 생성 ###############################
 # Add Controller

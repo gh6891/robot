@@ -663,7 +663,6 @@
     "python.languageServer": "Pylance",
     "python.defaultInterpreterPath": "/home/gh6891/isaacsim/kit/python/bin/python3",
     // python.pythonPath is deprecated
-    // "python.pythonPath": "${workspaceFolder}/kit/python/bin/python3",
 
 
     // This enables python language server. Seems to work slightly better than jedi:
