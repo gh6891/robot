@@ -13,6 +13,10 @@ def random_uniform_terrain(
     max_height,
     step=1,
     downsampled_scale=None,
+    hole_center_x = 1.0,
+    hole_center_y = 0.5,
+    hole_radius = 0.04,
+    hole_depth = 0.1,
 ):
     """
     Generate a uniform noise terrain
@@ -29,29 +33,60 @@ def random_uniform_terrain(
         downsampled_scale = terrain.horizontal_scale #0.25
 
     # switch parameters to discrete units
-    min_height = int(min_height / terrain.vertical_scale)  #-0.2/ 0.005 = -40
-    max_height = int(max_height / terrain.vertical_scale) #0.2/ 0.005 = 40
-    step = int(step / terrain.vertical_scale) #1/ 0.005 = 200
+    min_height = int(min_height / terrain.vertical_scale)  #-0.05/ 0.00005 = 1000
+    print(f"==>> min_height: {min_height}")
+    max_height = int(max_height / terrain.vertical_scale) #0.05/ 0.00005 = 1000
+    print(f"==>> max_height: {max_height}")
+    step = int(step / terrain.vertical_scale) #0.001/ 0.005 = 0.2
+    if step < 1:
+        step = 1
+    print(f"==>> step: {step}")
 
-    heights_range = np.arange(min_height, max_height + step, step)
+
+    heights_range = np.arange(min_height, max_height + step, step) #[-1000~1000]
+    print(f"==>> heights_range: {heights_range}")
     height_field_downsampled = np.random.choice(
         heights_range,
         (
-            int(terrain.width * terrain.horizontal_scale / downsampled_scale),
-            int(terrain.length * terrain.horizontal_scale / downsampled_scale),
+            int(terrain.width * terrain.horizontal_scale / downsampled_scale), #0.85 * 0.0025 / 0.005 = 420.85*0
+            int(terrain.length * terrain.horizontal_scale / downsampled_scale), #1.7 * 0.0025 / 0.005 = 85
         ),
     )
 
-    x = np.linspace(0, terrain.width * terrain.horizontal_scale, height_field_downsampled.shape[0]) #(0, 48)
-    y = np.linspace(0, terrain.length * terrain.horizontal_scale, height_field_downsampled.shape[1])
 
+    print(terrain.width) #340
+    print(terrain.length) #680
+    print(terrain.horizontal_scale) #0.0025
+    print(downsampled_scale)    #0.025
+          
+    print(terrain.width * terrain.horizontal_scale / downsampled_scale) #170
+    print(f"==>> height_field_downsampled.shape: {height_field_downsampled.shape}")
+
+    x = np.linspace(0, terrain.length * terrain.horizontal_scale, height_field_downsampled.shape[1])
+    y = np.linspace(0, terrain.width * terrain.horizontal_scale, height_field_downsampled.shape[0])
+    print(">>>>>>>>>", x.shape)
+    print(">>>>>>>>>", y.shape)
+    print(">>>>>>>>>", height_field_downsampled.shape)
     f = interpolate.RectBivariateSpline(y, x, height_field_downsampled)
 
-    x_upsampled = np.linspace(0, terrain.width * terrain.horizontal_scale, terrain.width)
-    y_upsampled = np.linspace(0, terrain.length * terrain.horizontal_scale, terrain.length)
+    x_upsampled = np.linspace(0, terrain.length * terrain.horizontal_scale, terrain.length)
+    y_upsampled = np.linspace(0, terrain.width * terrain.horizontal_scale, terrain.width)
     z_upsampled = np.rint(f(y_upsampled, x_upsampled))
-
     terrain.height_field_raw += z_upsampled.astype(np.int16)
+
+    # 구멍 만들기
+    hole_depth_discrete = int(hole_depth / terrain.vertical_scale)
+    for i in range(terrain.width):
+        for j in range(terrain.length):
+            world_x = j * terrain.horizontal_scale
+            world_y = i * terrain.horizontal_scale
+            distance = np.sqrt((world_x - hole_center_x)**2 + (world_y - hole_center_y)**2)
+            if distance <= hole_radius:
+                terrain.height_field_raw[i, j] = -10.0
+                # terrain.height_field_raw[i, j] -= hole_depth_discrete
+                print("hole_x, hole_y: ", i, j)
+                print("world_x, world_y: ", world_x, world_y)
+
     return terrain
 
 

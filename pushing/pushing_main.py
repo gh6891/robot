@@ -26,7 +26,7 @@ from isaacsim.core.utils.stage import add_reference_to_stage, get_current_stage
 from isaacsim.core.api.materials.preview_surface import PreviewSurface
 from isaacsim.core.cloner.grid_cloner import GridCloner
 from isaacsim.storage.native import find_nucleus_server
-
+from isaacsim.core.api.objects import DynamicCuboid
 
 
 
@@ -56,17 +56,17 @@ from utils.controllers.basic_manipulation_controller import BasicManipulationCon
 
 
 if __name__ == "__main__":
-    world = World(
-        stage_units_in_meters=1.0, 
-        rendering_dt=1.0/60.0,
-        backend="torch", 
-        device="cpu"
-    )
+    # world = World(
+    #     stage_units_in_meters=1.0, 
+    #     rendering_dt=1.0/60.0,
+    #     backend="torch", 
+    #     device="cpu"
+    # )
+    world= World(stage_units_in_meters=1.0)
     scene = world.scene
-    scene.add_default_ground_plane()
+
     #setup robot
     robot_usd_path = os.path.join(absolute_path, "utils/assets/ur5e_handeye_gripper.usd")
-    print(f"==>> robot_usd_path: {robot_usd_path}")
     my_robot = UR5eHandeye(
         prim_path="/World/ur5e", # should be unique
         name="my_ur5e",
@@ -75,7 +75,18 @@ if __name__ == "__main__":
         activate_camera=False,
         )
     scene.add(my_robot)
-    print("==>> my_robot prim path: ", my_robot)
+
+    # Add cube
+    cube = DynamicCuboid(
+        prim_path = "/World/cube",
+        name = "cube",
+        position = [0.0, 0.5, 1.0],
+        color = np.array([1, 0, 0]),
+        size = 0.06,
+        mass = 0.01,
+        )
+    
+    scene.add(cube)
     # Add Controller
     my_controller = BasicManipulationController(
         name='basic_manipulation_controller',
@@ -86,6 +97,7 @@ if __name__ == "__main__":
         # phase의 진행 속도 설정
         events_dt=[0.008],
     )
+
     #setup terrain
     num_envs = 100  
     num_per_row = 10
@@ -108,7 +120,6 @@ if __name__ == "__main__":
     init_target_position = my_robot._end_effector.get_world_poses()[0][0]
 
     while simulation_app.is_running():
-        print(f"==>> robot_usd_path: {robot_usd_path}")
         if world.is_playing():
             if world.current_time_step_index == 0:
                 world.reset(soft=True)

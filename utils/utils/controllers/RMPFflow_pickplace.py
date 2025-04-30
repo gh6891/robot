@@ -9,7 +9,8 @@
 from isaacsim.robot_motion import motion_generation as mg
 from isaacsim.core.prims import SingleArticulation
 from pxr import Gf, UsdGeom
-
+import numpy as np
+import torch
 
 class RMPFlowController(mg.MotionPolicyController):
     """[summary]
@@ -39,6 +40,17 @@ class RMPFlowController(mg.MotionPolicyController):
         self._default_position, self._default_orientation = (
             self._articulation_motion_policy._robot_articulation.get_world_pose()
         )
+
+        # # NumPy array를 list로 변환
+        # if isinstance(self._default_position, torch.Tensor):
+        #     self._default_position = self._default_position.numpy()
+        # if isinstance(self._default_orientation, torch.Tensor):
+        #     self._default_orientation = self._default_orientation.numpy()
+
+        # print(">>>>>>>>>>>>",self._default_position, self._default_orientation)
+        # print(">>>>>>>>>>>>",type(self._default_position), type(self._default_orientation))
+
+
         self._motion_policy.set_robot_base_pose(
             robot_position=self._default_position, robot_orientation=self._default_orientation
         )
