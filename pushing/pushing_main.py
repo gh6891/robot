@@ -6,7 +6,6 @@ sys.path.append(SCRIPT_DIR)
 from isaacsim import SimulationApp
 import numpy as np
 import torch
-
 config = {
 'width': 1920,
 'height': 1080,
@@ -27,7 +26,7 @@ from isaacsim.core.api.materials.preview_surface import PreviewSurface
 from isaacsim.core.cloner.grid_cloner import GridCloner
 from isaacsim.storage.native import find_nucleus_server
 from isaacsim.core.api.objects import DynamicCuboid
-
+from isaacsim.core.utils.rotations import euler_angles_to_quat
 
 
 
@@ -48,9 +47,6 @@ sys.path.append(absolute_path)
 from utils.robots.ur5e_handeye import UR5eHandeye
 from utils.controllers.RMPFflow_pickplace import RMPFlowController
 from utils.controllers.basic_manipulation_controller import BasicManipulationController
-
-
-
 
 
 
@@ -118,13 +114,67 @@ if __name__ == "__main__":
     world.reset()
     # init target position을 robot end effector의 위치로 지정
     init_target_position = my_robot._end_effector.get_world_poses()[0][0]
+    print(my_robot._end_effector.get_world_poses())
+    print(f"==>> init_target_position: {type(init_target_position)}") # position
+    print(f"==>> init_target_orientation: {my_robot._end_effector.get_world_poses()[1][0]}") # orientation
+
+
+    state = "APPROACH_1"
+    first_target_position = np.array([-0.3, 0.3, 0.3])
+    second_target_position = np.array([0.0, 0.3, 0.3])
+    third_target_position = np.array([0.3, 0.3, 0.3])
+    target_orientation_euler = np.array([180.0, 0.0, -90.0]) # euler angles
+    target_orientation = euler_angles_to_quat(target_orientation_euler, degrees = True)
 
     while simulation_app.is_running():
+        world.step(render=True)
         if world.is_playing():
-            if world.current_time_step_index == 0:
-                world.reset(soft=True)
-            world.step(render=True)
-        else:
-            world.step(render=True)
+            if state == "APPROACH_1":
 
+                # 선언한 my_controller를 사용하여 action 수행
+                actions = my_controller.forward(
+                    target_position=first_target_position,
+                    end_effector_orientation=target_orientation,
+                    current_joint_positions=my_robot.get_joints_state().positions
+                    )
+                articulation_controller.apply_action(actions)
+                        # controller의 동작이 끝남 여부를 확인
+                if my_controller.is_done():
+                    print("done position control of end-effector")
+                    my_controller.reset()
+                    # APPROACH가 끝났을 경우 GRASP state 단계로 변경
+                    state = "APPROACH_2"
+
+            if state == "APPROACH_2":
+                # cube 위치 얻어오기
+                cur_cube_position = cube.get_world_pose()[0]
+                # 선언한 my_controller를 사용하여 action 수행
+                actions = my_controller.forward(
+                    target_position=second_target_position,
+                    end_effector_orientation=target_orientation,
+                    current_joint_positions=my_robot.get_joints_state().positions
+                    )
+                articulation_controller.apply_action(actions)
+                        # controller의 동작이 끝남 여부를 확인
+                if my_controller.is_done():
+                    print("done position control of end-effector")
+                    my_controller.reset()
+                    # APPROACH가 끝났을 경우 GRASP state 단계로 변경
+                    state = "APPROACH_3"
+            if state == "APPROACH_3":
+                # cube 위치 얻어오기
+                cur_cube_position = cube.get_world_pose()[0]
+                # 선언한 my_controller를 사용하여 action 수행
+                actions = my_controller.forward(
+                    target_position=third_target_position,
+                    end_effector_orientation=target_orientation,
+                    current_joint_positions=my_robot.get_joints_state().positions
+                    )
+                articulation_controller.apply_action(actions)
+                        # controller의 동작이 끝남 여부를 확인
+                if my_controller.is_done():
+                    print("done position control of end-effector")
+                    my_controller.reset()
+                    # APPROACH가 끝났을 경우 GRASP state 단계로 변경
+                    state = "APPROACH_1"
     simulation_app.close()
