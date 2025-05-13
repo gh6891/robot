@@ -9,7 +9,7 @@
 from omni.isaac.core.controllers import BaseController
 from omni.isaac.core.utils.stage import get_stage_units
 from omni.isaac.core.utils.types import ArticulationAction
-from omni.isaac.core.utils.rotations import euler_angles_to_quat
+from omni.isaac.core.utils.rotations import euler_angles_to_quat, quat_to_euler_angles
 import numpy as np
 import typing
 from omni.isaac.manipulators.grippers.gripper import Gripper
@@ -107,13 +107,17 @@ class BasicManipulationController(BaseController):
         
         # end effector orientation 설정
         if end_effector_orientation is None:
+            print("end_effector_orientation is None")
             end_effector_orientation = euler_angles_to_quat(np.array([0, np.pi, 0]))
-        
+
+        aaa = end_effector_orientation
+        bbb = quat_to_euler_angles(end_effector_orientation, degrees=True)
+        print(aaa)
+        print(bbb)
         # ArticulationAction 생성
         target_joint_positions = self._cspace_controller.forward(
             target_end_effector_position=position_target, target_end_effector_orientation=end_effector_orientation
         )
-        
         # 이벤트 시간이 _event_dt만큼 흐르게 함
         # _event_dt가 쌓여서 단위시간 1 만큼 흘렀다면 phase 종료 및 이벤트 시간 초기화
         self._t += self._events_dt[self._event]

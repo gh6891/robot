@@ -1,5 +1,6 @@
 import os, sys
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+print(SCRIPT_DIR)
 sys.path.append(SCRIPT_DIR)
 
 # import omni
@@ -34,21 +35,24 @@ from isaacsim.core.api.materials.preview_surface import PreviewSurface
 from isaacsim.core.cloner.grid_cloner import GridCloner
 from isaacsim.storage.native import find_nucleus_server
 from isaacsim.core.api.objects import DynamicCuboid
-from isaacsim.core.utils.rotations import euler_angles_to_quat, quat_to_euler_angles
+from isaacsim.core.utils.rotations import euler_angles_to_quat, quat_to_euler_angles, quat_to_rot_matrix
 
 
 
 from pxr import UsdPhysics, UsdLux, UsdShade, Sdf, Gf, UsdGeom, PhysxSchema
 
+path = "/home/gh6891/robot/pushing"
+sys.path.append(path)
+
 from terrain_utils import *
 from terraincreation import TerrainCreation
 
 #로봇path 
-relative_path = "../utils/utils/assets"
-absolute_path = os.path.abspath(relative_path)
+
+absolute_path = "/home/gh6891/robot/utils/utils/assets"
 sys.path.append(absolute_path)
 
-relative_path = "../utils"
+relative_path = "/home/gh6891/robot/utils"
 absolute_path = os.path.abspath(relative_path)
 sys.path.append(absolute_path)
 
@@ -231,7 +235,21 @@ if __name__ == "__main__":
                     rgb = my_robot.rgb_cam.get_rgba()
                     depth = my_robot.depth_cam.get_depth()
 
-                    if rgb is not None and depth is not None:
+                    #카메라의 T행렬 계산
+                    end_effector_position = my_robot._end_effector.get_world_poses()[0]
+                    end_effector_orientation = my_robot._end_effector.get_world_poses()[1][0]
+                    print("end_effector_position : ", end_effector_position)
+                    print("end_effector_orientation : ", end_effector_orientation)
+                    rotation = quat_to_rot_matrix(end_effector_orientation)
+                    print(f"==>> rotation: {rotation}")
+                    end_effector_position = end_effector_position.reshape((3, 1))
+                    print(f"==>> end_effector_position: {end_effector_position}")
+                    transformation_matrix = np.hstack(rotation, end_effector_position)
+                    print(f"==>> transformation_matrix: {transformation_matrix}")
+                    transformation_matrix = np.vstack((transformation_matrix, np.array([0, 0, 0, 1])))
+                    print(f"==>> transformation_matrix: {transformation_matrix}")
+
+                    if rgb is not None and depth is not None: 
                         rgb_bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
                         depth_clean = np.where(np.isfinite(depth), depth, 0) # inf, nan > 0으로 변경
                         depth_images.append(depth_clean)

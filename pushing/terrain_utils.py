@@ -5,7 +5,102 @@ from numpy.random import choice
 from isaacsim.core.prims import SingleXFormPrim as XFormPrim
 from pxr import Gf, PhysxSchema, Sdf, UsdPhysics
 from scipy import interpolate
+import matplotlib.pyplot as plt
 
+
+def random_gaussian_terrain(
+    terrain,
+    mountain_centers=None,
+    mountain_heights=None,
+    mountain_std_devs=None,
+    downsampled_scale=None,
+    hole_center_x=1.0,
+    hole_center_y=0.5,
+    hole_radius=0.04,
+    hole_depth=0.1,
+):
+    """
+    Generate a terrain with multiple random Gaussian mountains.
+
+    Parameters
+        terrain (SubTerrain): the terrain object to modify.
+        mountain_centers (list of tuples, optional): List of (center_x, center_y) for each mountain.
+                                                     If None, centers are randomly generated.
+        mountain_heights (list of floats, optional): List of heights for each mountain.
+                                                     If None, heights are randomly generated.
+        mountain_std_devs (list of floats, optional): List of standard deviations for each mountain.
+                                                      If None, std_devs are randomly generated.
+        downsampled_scale (float, optional): Distance between two randomly sampled points for base noise.
+        hole_center_x (float): x-coordinate of the hole center [meters].
+        hole_center_y (float): y-coordinate of the hole center [meters].
+        hole_radius (float): radius of the hole [meters].
+        hole_depth (float): depth of the hole [meters].
+    """
+    if downsampled_scale is None:
+        downsampled_scale = terrain.horizontal_scale
+
+    # Generate a base uniform noise terrain (optional, can be removed if only mountains are desired)
+    min_height_discrete = int(-0.01 / terrain.vertical_scale)
+    max_height_discrete = int(0.01 / terrain.vertical_scale)
+    heights_range = np.arange(min_height_discrete, max_height_discrete + 1)
+    height_field_downsampled_base = np.random.choice(
+        heights_range,
+        (
+            int(terrain.width * terrain.horizontal_scale / downsampled_scale),
+            int(terrain.length * terrain.horizontal_scale / downsampled_scale),
+        ),
+    ).astype(np.float32) * terrain.vertical_scale
+
+    x_downsampled = np.linspace(0, terrain.length * terrain.horizontal_scale, height_field_downsampled_base.shape[1])
+    y_downsampled = np.linspace(0, terrain.width * terrain.horizontal_scale, height_field_downsampled_base.shape[0])
+    f_base = interpolate.RectBivariateSpline(y_downsampled, x_downsampled, height_field_downsampled_base)
+    x_upsampled = np.linspace(0, terrain.length * terrain.horizontal_scale, terrain.length)
+    y_upsampled = np.linspace(0, terrain.width * terrain.horizontal_scale, terrain.width)
+    base_height_map = f_base(y_upsampled, x_upsampled)
+    terrain.height_field_raw[:] = (base_height_map / terrain.vertical_scale).astype(np.int16)
+
+    num_mountains = 0
+    if mountain_centers is None:
+        num_mountains = np.random.randint(5, 8)
+        mountain_centers = [(np.random.uniform(0.1, terrain.length * terrain.horizontal_scale - 0.1),
+                             np.random.uniform(0.1, terrain.width * terrain.horizontal_scale - 0.1))
+                            for _ in range(num_mountains)]
+    else:
+        num_mountains = len(mountain_centers)
+
+    if mountain_heights is None:
+        mountain_heights = np.random.uniform(0.05, 0.2, num_mountains)
+    elif len(mountain_heights) != num_mountains:
+        raise ValueError("Length of mountain_heights must match the number of mountains.")
+
+    if mountain_std_devs is None:
+        mountain_std_devs = np.random.uniform(0.1, 0.3, num_mountains)
+    elif len(mountain_std_devs) != num_mountains:
+        raise ValueError("Length of mountain_std_devs must match the number of mountains.")
+
+    x_map, y_map = np.meshgrid(np.linspace(0, terrain.length * terrain.horizontal_scale, terrain.length),
+                               np.linspace(0, terrain.width * terrain.horizontal_scale, terrain.width))
+
+    for i in range(num_mountains):
+        center_x, center_y = mountain_centers[i]
+        height = mountain_heights[i]
+        std_dev = mountain_std_devs[i]
+
+        exponent = -((x_map - center_x)**2 + (y_map - center_y)**2) / (2 * std_dev**2)
+        gaussian_mountain = height * np.exp(exponent)
+        terrain.height_field_raw += (gaussian_mountain / terrain.vertical_scale).astype(np.int16)
+    # 구멍 만들기
+    # hole_depth_discrete = int(hole_depth / terrain.vertical_scale)
+    # for i in range(terrain.width):
+    #     for j in range(terrain.length):
+    #         world_x = j * terrain.horizontal_scale
+    #         world_y = i * terrain.horizontal_scale
+    #         distance = np.sqrt((world_x - hole_center_x)**2 + (world_y - hole_center_y)**2)
+    #         if distance <= hole_radius:
+    #             terrain.height_field_raw[i, j] = int(-0.1 / terrain.vertical_scale) # Set a fixed negative height for the hole
+    #             # terrain.height_field_raw[i, j] -= hole_depth_discrete
+
+    return terrain
 
 def random_uniform_terrain(
     terrain,
@@ -33,30 +128,31 @@ def random_uniform_terrain(
         downsampled_scale = terrain.horizontal_scale #0.25
 
     # switch parameters to discrete units
-    min_height = int(min_height / terrain.vertical_scale)  #-0.05/ 0.00005 = 1000
-    max_height = int(max_height / terrain.vertical_scale) #0.05/ 0.00005 = 1000
-    step = int(step / terrain.vertical_scale) #0.001/ 0.005 = 0.2
+    min_height = int(min_height / terrain.vertical_scale)  #-0.05/ 0.005 = -10
+    max_height = int(max_height / terrain.vertical_scale) #0.05/ 0.005 = 10
+    step = int(step / terrain.vertical_scale) #0.001/ 0.005 = 0.
     if step < 1:
         step = 1
 
 
-    heights_range = np.arange(min_height, max_height + step, step) #[-1000~1000]
+    heights_range = np.arange(min_height, max_height + step, step) #[-10~10]
     height_field_downsampled = np.random.choice(
         heights_range,
         (
-            int(terrain.width * terrain.horizontal_scale / downsampled_scale), #0.85 * 0.0025 / 0.005 = 420.85*0
-            int(terrain.length * terrain.horizontal_scale / downsampled_scale), #1.7 * 0.0025 / 0.005 = 85
+            int(terrain.width * terrain.horizontal_scale / downsampled_scale), #1.0 * 0.025 / 0.1 = 0.25
+            int(terrain.length * terrain.horizontal_scale / downsampled_scale), #2.0 * 0.025 / 0.1 = 0.5
         ),
     )
 
-
-          
     x = np.linspace(0, terrain.length * terrain.horizontal_scale, height_field_downsampled.shape[1])
     y = np.linspace(0, terrain.width * terrain.horizontal_scale, height_field_downsampled.shape[0])
     f = interpolate.RectBivariateSpline(y, x, height_field_downsampled)
+    # f = interpolate.interp2d(x, y, height_field_downsampled, kind="linear")
+    
+    upsampled_factor = 1
+    x_upsampled = np.linspace(0, terrain.length * terrain.horizontal_scale, terrain.length * upsampled_factor)
+    y_upsampled = np.linspace(0, terrain.width * terrain.horizontal_scale, terrain.width * upsampled_factor)
 
-    x_upsampled = np.linspace(0, terrain.length * terrain.horizontal_scale, terrain.length)
-    y_upsampled = np.linspace(0, terrain.width * terrain.horizontal_scale, terrain.width)
     z_upsampled = np.rint(f(y_upsampled, x_upsampled))
     terrain.height_field_raw += z_upsampled.astype(np.int16)
 
