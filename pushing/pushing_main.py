@@ -123,8 +123,10 @@ def generate_height_map(depth_images):
     plt.close()
 
     return height_map
+def setup_world():
 
 if __name__ == "__main__":
+    setup_world()
     depth_images = []
     # world = World(
     #     stage_units_in_meters=1.0, 
@@ -197,8 +199,8 @@ if __name__ == "__main__":
     first_target_position = np.array([-0.3, 0.3, 0.3])
     second_target_position = np.array([0.0, 0.3, 0.3])
     third_target_position = np.array([0.3, 0.3, 0.3])
-    target_orientation_euler = np.array([180.0, 0.0, -90.0]) # euler angles
-    target_orientation = euler_angles_to_quat(target_orientation_euler, degrees = True)
+    target_orientation_euler = np.array([180.0, -90.0, 0.0]) # euler angles
+    target_orientation = euler_angles_to_quat(target_orientation_euler, degrees = True, extrinsic=False)
     print("목표 target_orientation_quat : ", target_orientation)
     print("다시 오일러 target_orientation_euler : ", quat_to_euler_angles(target_orientation, degrees = True))
     idx = 0 #사진 인덱스
