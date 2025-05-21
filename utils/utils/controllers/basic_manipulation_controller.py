@@ -89,12 +89,12 @@ class BasicManipulationController(BaseController):
             end_effector_offset = np.array([0, 0, 0.14])
             
         # 시뮬레이션이 멈춰 있거나 끝났을 때 실행
-        if self._pause or self.is_done():
-            # 시뮬레이션 멈춤
-            self.pause()
-            # Action에 None 리턴
-            target_joint_positions = [None] * current_joint_positions.shape[0]
-            return SingleArticulation(joint_positions=target_joint_positions)
+        # if self._pause or self.is_done():
+        #     # 시뮬레이션 멈춤
+        #     self.pause()
+        #     # Action에 None 리턴
+        #     target_joint_positions = [None] * current_joint_positions.shape[0]
+        #     return SingleArticulation(joint_positions=target_joint_positions)
 
         
         # end effector offset을 고려한 타겟 x,y,z 위치 계산
@@ -118,10 +118,10 @@ class BasicManipulationController(BaseController):
         
         # 이벤트 시간이 _event_dt만큼 흐르게 함
         # _event_dt가 쌓여서 단위시간 1 만큼 흘렀다면 phase 종료 및 이벤트 시간 초기화
-        self._t += self._events_dt[self._event]
-        if self._t >= 1.0:
-            self._event += 1
-            self._t = 0
+        # self._t += self._events_dt[self._event]
+        # if self._t >= 1.0:
+        #     self._event += 1
+        #     self._t = 0
         
         # end effector가 어떤 위치(x,y,z)와 orientation을 향해 
         # 어떤 속도로 가야 하는지에 대한 정보 리턴
@@ -177,6 +177,7 @@ class BasicManipulationController(BaseController):
         """
         if end_effector_offset is None:
             end_effector_offset = np.array([0, 0, 0.14])
+
         if self._pause or self.is_done():
             self.pause()
             target_joint_positions = [None] * current_joint_positions.shape[0]
@@ -232,7 +233,6 @@ class BasicManipulationController(BaseController):
             return True
         else:
             return False
-
 
     def pause(self) -> None:
         """Pauses the state machine's time and phase.

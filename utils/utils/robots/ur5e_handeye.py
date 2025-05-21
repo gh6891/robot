@@ -52,6 +52,7 @@ class UR5eHandeye(Robot):
         self._rgb_cam = rgb_cam_prim_name         ### BSH
         self._depth_cam = depth_cam_prim_name     ### BSH
         self._activate_camera = activate_camera
+        self._previous_joint_positions = None
         if not prim.IsValid():
             if usd_path:
                 add_reference_to_stage(usd_path=usd_path, prim_path=prim_path)
@@ -184,3 +185,28 @@ class UR5eHandeye(Robot):
             dof_index=self.gripper.joint_dof_indicies[1], mode="position"
         )
         return
+    
+    def is_moving(self) -> bool:
+        """[summary]
+
+        Returns:
+            bool: [description]
+        """
+        if self._previous_joint_positions is None:
+            self._previous_joint_positions = self.get_joints_state().positions
+            return True  # 처음 호출 시에는 움직이는 것으로 간주
+
+        current_joint_positions = self.get_joints_state().positions
+        if current_joint_positions is None:
+            return False  # 위치 정보를 얻을 수 없으면 안움직이는 걸로 간주주
+
+        moving_threshold = 0.001  # 움직임으로 간주할 최소 위치 변화량 (조정 필요)
+
+        for i in range(min(6, len(current_joint_positions))):
+            if abs(current_joint_positions[i] - self._previous_joint_positions[i]) > moving_threshold:
+                self._previous_joint_positions = current_joint_positions.copy()
+                return True  # 위치 변화량이 임계값보다 크면 움직이는 것으로 판단
+
+        self._previous_joint_positions = current_joint_positions.copy()
+        return False
+    

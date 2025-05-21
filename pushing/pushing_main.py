@@ -61,9 +61,9 @@ from utils.controllers.basic_manipulation_controller import BasicManipulationCon
 save_dir = "/home/gh6891/robot/pushing/test_image"
 os.makedirs(save_dir, exist_ok=True)
 # ─────────────────────────────────────────────────────── #
-def generate_height_map(depth_images):
+def generate_height_map(depth_images, camera_positions):
     all_points = []
-    camera_positions = [first_target_position, second_target_position, third_target_position]
+    # camera_positions = [first_target_position, second_target_position, third_target_position]
     for i in range(3):
         depth_img = depth_images[i]
 
@@ -123,17 +123,8 @@ def generate_height_map(depth_images):
     plt.close()
 
     return height_map
-def setup_world():
 
-if __name__ == "__main__":
-    setup_world()
-    depth_images = []
-    # world = World(
-    #     stage_units_in_meters=1.0, 
-    #     rendering_dt=1.0/60.0,
-    #     backend="torch", 
-    #     device="cpu"
-    # )
+def setup_world():
     world= World(stage_units_in_meters=1.0)
     scene = world.scene
     # scene.add_default_ground_plane()
@@ -192,126 +183,139 @@ if __name__ == "__main__":
     my_robot.rgb_cam.initialize()
     my_robot.depth_cam.initialize()
     my_robot.depth_cam.add_distance_to_image_plane_to_frame()
-    # init target position을 robot end effector의 위치로 지정
-    init_target_position = my_robot._end_effector.get_world_poses()[0][0]
+    return world, my_controller, my_robot, articulation_controller
 
+
+def is_moving(robot, robot_is_moving):
+    print("test : ", robot_is_moving)
+    if robot_is_moving is None:
+        robot_is_moving = robot.is_moving()
+        return robot_is_moving
+    else:
+        return robot_is_moving
+
+def robot_approach(robot, target_position, target_orientation, is_moving):
+    # 선언한 my_controller를 사용하여 action 수행
+    actions = my_controller.forward(
+        target_position=first_target_position,
+        end_effector_offset = np.array([0, 0, 0.0]),
+        end_effector_orientation=target_orientation,
+        current_joint_positions=robot.get_joints_state().positions
+        )
+    
+    articulation_controller.apply_action(actions)
+    # controller의 동작이 끝남 여부를 확인
+    
+    if is_moving == False:
+        print(target_position, " >>> end_effector_orientation",robot._end_effector.get_world_poses()[1][0])
+        print(target_orientation, " >>> end_effector_position",robot._end_effector.get_world_poses()[0][0])
+        my_controller.reset()
+        
+def get_camera_image(robot, idx):
+    rgb = robot.rgb_cam.get_rgba()
+    depth = robot.depth_cam.get_depth()
+    depth_clean = []
+    if rgb is not None and depth is not None:
+        rgb_bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        depth_clean = np.where(np.isfinite(depth), depth, 0) # inf, nan > 0으로 변경
+        depth_norm = cv2.normalize(depth_clean, None, 0, 255, cv2.NORM_MINMAX)
+        depth_gray = depth_norm.astype(np.uint8)
+        cv2.imwrite(os.path.join(save_dir, f"rgb_pos_{idx}.png"), rgb_bgr)
+        cv2.imwrite(os.path.join(save_dir, f"depth_pos_{idx}.png"), depth_gray)
+        print(f"[INFO] Saved images for position {idx}")
+        return rgb, depth_clean
+    else:
+        print("[WARNING] Could not retrieve RGB or Depth image. Returning None, None.")
+        return None, None
+
+
+
+if __name__ == "__main__":
+    depth_images = []
+    camera_positions = []
+    robot_is_moving = None
+    world, my_controller,my_robot, articulation_controller = setup_world()
+    
     state = "APPROACH_1"
-    first_target_position = np.array([-0.3, 0.3, 0.3])
-    second_target_position = np.array([0.0, 0.3, 0.3])
-    third_target_position = np.array([0.3, 0.3, 0.3])
-    target_orientation_euler = np.array([180.0, -90.0, 0.0]) # euler angles
-    target_orientation = euler_angles_to_quat(target_orientation_euler, degrees = True, extrinsic=False)
-    print("목표 target_orientation_quat : ", target_orientation)
-    print("다시 오일러 target_orientation_euler : ", quat_to_euler_angles(target_orientation, degrees = True))
+    first_target_position = np.array([0.0, -0.5, 0.4])
+    second_target_position = np.array([0.0, -0.5, 0.4])
+    third_target_position = np.array([0.0, -0.5, 0.4])
+
+    target_orientation_euler_1 = np.array([0.0, 0.0, 0.0]) # euler angles
+    target_orientation_euler_2 = np.array([90.0, 0.0, 0.0]) # euler angles
+    target_orientation_euler_3 = np.array([90.0, 90.0, 0.0]) # euler angles
+    target_orientation_euler_4 = np.array([90.0, 90.0, 90.0]) # euler angles
+
+    target_orientation_1 = euler_angles_to_quat(target_orientation_euler_1, degrees = True, extrinsic=False)
+    target_orientation_2 = euler_angles_to_quat(target_orientation_euler_2, degrees = True, extrinsic=False)
+    target_orientation_3 = euler_angles_to_quat(target_orientation_euler_3, degrees = True, extrinsic=False)
+    target_orientation_4 = euler_angles_to_quat(target_orientation_euler_4, degrees = True, extrinsic=False)
+
+    prev_robot_is_moving = False
     idx = 0 #사진 인덱스
     while simulation_app.is_running():
         world.step(render=True)
         if world.is_playing():
+
+            robot_is_moving = my_robot.is_moving()
+            robot_just_stopped = prev_robot_is_moving and (robot_is_moving == False)
+
             if state == "APPROACH_1":
-
-                # 선언한 my_controller를 사용하여 action 수행
-                actions = my_controller.forward(
-                    target_position=first_target_position,
-                    end_effector_offset = np.array([0, 0, 0.0]),
-                    end_effector_orientation=target_orientation,
-                    current_joint_positions=my_robot.get_joints_state().positions
-                    )
-                
-                articulation_controller.apply_action(actions)
-                        # controller의 동작이 끝남 여부를 확인w
-                if my_controller.is_done():
-                    print("done position control of end-effector")
-                    print("동작이 끝나고 end_effector_orientation",my_robot._end_effector.get_world_poses()[1][0])
-                    print("동작이 끝나고 end_effector_orientation",quat_to_euler_angles(my_robot._end_effector.get_world_poses()[1][0], degrees = True))
-                    my_controller.reset()
-                    # APPROACH가 끝났을 경우 GRASP state 단계로 변경
-                    state = "APPROACH_2"
-
-                    # 안정화 후 이미지 캡처
-                    for _ in range(10):
-                        world.step(render=True)
-                    rgb = my_robot.rgb_cam.get_rgba()
-                    depth = my_robot.depth_cam.get_depth()
-
+                robot_approach(my_robot, first_target_position, target_orientation_1, robot_is_moving)
+                if robot_just_stopped:
+                    rgb, depth = get_camera_image(my_robot, "APPROACH_1")
                     if rgb is not None and depth is not None:
-                        rgb_bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-                        depth_clean = np.where(np.isfinite(depth), depth, 0) # inf, nan > 0으로 변경
-                        depth_images.append(depth_clean)
-                        depth_norm = cv2.normalize(depth_clean, None, 0, 255, cv2.NORM_MINMAX)
-                        depth_gray = depth_norm.astype(np.uint8)
-                        cv2.imwrite(os.path.join(save_dir, f"rgb_pos{idx}.png"), rgb_bgr)
-                        cv2.imwrite(os.path.join(save_dir, f"depth_pos{idx}.png"), depth_gray)
-                        print(f"[INFO] Saved images for position {idx}")
-                        idx+=1
+                        depth_images.append(depth)
+                        # camera_positions.append()
+                        print("depth shape : ", depth.shape)
+                        print("rgb shape : ", rgb.shape)
+                        state = "APPROACH_2"
+                        print(f"==>> state: {state}")
+            elif state == "APPROACH_2":
+                robot_approach(my_robot, second_target_position, target_orientation_2, robot_is_moving)
+                if robot_just_stopped:
+                    rgb, depth = get_camera_image(my_robot, "APPROACH_1")
+                    if rgb is not None and depth is not None:
+                        depth_images.append(depth)
+                        # camera_positions.append()
+                        print("depth shape : ", depth.shape)
+                        print("rgb shape : ", rgb.shape)
+                        state = "APPROACH_3"
+                        print(f"==>> state: {state}")
+                        
 
-            # if state == "APPROACH_2":
-            #     # cube 위치 얻어오기
-            #     cur_cube_position = cube.get_world_pose()[0]
-            #     # 선언한 my_controller를 사용하여 action 수행
-            #     actions = my_controller.forward(
-            #         target_position=second_target_position,
-            #         end_effector_orientation=target_orientation,
-            #         current_joint_positions=my_robot.get_joints_state().positions
-            #         )
-            #     articulation_controller.apply_action(actions)
-            #             # controller의 동작이 끝남 여부를 확인
-            #     if my_controller.is_done():
-            #         print("done position control of end-effector")
-            #         my_controller.reset()
-            #         # APPROACH가 끝났을 경우 GRASP state 단계로 변경
-            #         state = "APPROACH_3"
+            elif state == "APPROACH_3":
+                robot_approach(my_robot, second_target_position, target_orientation_3, robot_is_moving)
+                if robot_just_stopped:
+                    rgb, depth = get_camera_image(my_robot, "APPROACH_1")
+                    if rgb is not None and depth is not None:
+                        depth_images.append(depth)
+                        # camera_positions.append()
+                        print("depth shape : ", depth.shape)
+                        print("rgb shape : ", rgb.shape)
+                        state = "APPROACH_4"
+                        print(f"==>> state: {state}")
+                        
 
-            #         # 안정화 후 이미지 캡처
-            #         for _ in range(10):
-            #             world.step(render=True)
-            #         rgb = my_robot.rgb_cam.get_rgba()
-            #         depth = my_robot.depth_cam.get_depth()
+            elif state == "APPROACH_4":
+                robot_approach(my_robot, second_target_position, target_orientation_4, robot_is_moving)
+                if robot_just_stopped:
+                    rgb, depth = get_camera_image(my_robot, "APPROACH_1")
+                    if rgb is not None and depth is not None:
+                        depth_images.append(depth)
+                        # camera_positions.append()
+                        print("depth shape : ", depth.shape)
+                        print("rgb shape : ", rgb.shape)
+                        state = "APPROACH_1"
+                        print(f"==>> state: {state}")
+                        depth_images = []
+            
 
-            #         if rgb is not None and depth is not None:
-            #             rgb_bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-            #             depth_clean = np.where(np.isfinite(depth), depth, 0)  # inf, nan → 0
-            #             depth_images.append(depth_clean)
-            #             depth_norm = cv2.normalize(depth_clean, None, 0, 255, cv2.NORM_MINMAX)
-            #             depth_gray = depth_norm.astype(np.uint8)
-            #             cv2.imwrite(os.path.join(save_dir, f"rgb_pos{idx}.png"), rgb_bgr)
-            #             cv2.imwrite(os.path.join(save_dir, f"depth_pos{idx}.png"), depth_gray)
-            #             print(f"[INFO] Saved images for position {idx}")
-            #             idx+=1
 
-            # if state == "APPROACH_3":
-            #     # cube 위치 얻어오기
-            #     cur_cube_position = cube.get_world_pose()[0]
-            #     # 선언한 my_controller를 사용하여 action 수행
-            #     actions = my_controller.forward(
-            #         target_position=third_target_position,
-            #         end_effector_orientation=target_orientation,
-            #         current_joint_positions=my_robot.get_joints_state().positions
-            #         )
-            #     articulation_controller.apply_action(actions)
-            #             # controller의 동작이 끝남 여부를 확인
-            #     if my_controller.is_done():
-            #         print("done position control of end-effector")
-            #         my_controller.reset()
-            #         # APPROACH가 끝났을 경우 GRASP state 단계로 변경
-            #         state = "APPROACH_1"
+            prev_robot_is_moving = robot_is_moving
+            # generate_height_map(depth_images)
 
-            #         # 안정화 후 이미지 캡처
-            #         for _ in range(10):
-            #             world.step(render=True)
-            #         rgb = my_robot.rgb_cam.get_rgba()
-            #         depth = my_robot.depth_cam.get_depth()
-            #         if rgb is not None and depth is not None:
-            #             rgb_bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-            #             depth_clean = np.where(np.isfinite(depth), depth, 0)
-            #             depth_images.append(depth_clean)
-            #             depth_norm = cv2.normalize(depth_clean, None, 0, 255, cv2.NORM_MINMAX)
-            #             depth_gray = depth_norm.astype(np.uint8)
-            #             cv2.imwrite(os.path.join(save_dir, f"rgb_pos{idx}.png"), rgb_bgr)
-            #             cv2.imwrite(os.path.join(save_dir, f"depth_pos{idx}.png"), depth_gray)
-            #             print(f"[INFO] Saved images for position {idx}")
-            #             idx+=1
-            #             generate_height_map(depth_images=depth_images)
-
+            idx += 1
                               
 
     simulation_app.close()
