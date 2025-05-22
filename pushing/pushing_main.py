@@ -34,7 +34,7 @@ from isaacsim.core.api.materials.preview_surface import PreviewSurface
 from isaacsim.core.cloner.grid_cloner import GridCloner
 from isaacsim.storage.native import find_nucleus_server
 from isaacsim.core.api.objects import DynamicCuboid
-from isaacsim.core.utils.rotations import euler_angles_to_quat, quat_to_euler_angles
+from isaacsim.core.utils.rotations import euler_angles_to_quat, quat_to_euler_angles, quat_to_rot_matrix
 
 
 
@@ -228,13 +228,138 @@ def get_camera_image(robot, idx):
         print("[WARNING] Could not retrieve RGB or Depth image. Returning None, None.")
         return None, None
 
+def scale_rgb_to_depth_fov(rgb_img, intrinsic_rgb, intrinsic_depth):
+        """
+        RGB 이미지를 Depth 시야각에 맞게 확장하고, 
+        확장된 이미지를 Depth 해상도에 맞게 스케일링합니다.
+        """
+        # 시야각 계산 (가로 및 세로)
+        fov_rgb_x = 2 * np.arctan(intrinsic_rgb['cx'] / intrinsic_rgb['fx'])
+        fov_rgb_y = 2 * np.arctan(intrinsic_rgb['cy'] / intrinsic_rgb['fy'])
+
+        fov_depth_x = 2 * np.arctan(intrinsic_depth['cx'] / intrinsic_depth['fx'])
+        fov_depth_y = 2 * np.arctan(intrinsic_depth['cy'] / intrinsic_depth['fy'])
+
+        rgb_W = rgb_img.shape[1]
+        rgb_H = rgb_img.shape[0]
+
+        # RGB 시야에 맞게 Depth 이미지 크기 조정 (가로, 세로)
+        scale_x = np.tan(fov_depth_x / 2) / np.tan(fov_rgb_x / 2)
+        scale_y = np.tan(fov_depth_y / 2) / np.tan(fov_rgb_y / 2)
+
+        # RGB 이미지 크기 확장 (Depth 시야각에 맞추기 위해 비율 적용)
+        expanded_width = int(rgb_W * scale_x)
+        expanded_height = int(rgb_H * scale_y)
+
+        # 확장된 이미지 크기 계산
+        expanded_rgb_img = np.zeros((expanded_height, expanded_width, 3), dtype=np.uint8)
+
+        # 원본 RGB 이미지를 확장된 중앙에 배치
+        x_offset = (expanded_width - rgb_W) // 2
+        y_offset = (expanded_height - rgb_H) // 2
+        expanded_rgb_img[y_offset:y_offset+rgb_H, x_offset:x_offset+rgb_W] = rgb_img
+
+        # Depth 해상도에 맞게 리사이즈
+        depth_W = int(intrinsic_depth['cx'] * 2 + 1)
+        depth_H = int(intrinsic_depth['cy'] * 2 + 1)
+
+        resized_rgb_img = cv2.resize(expanded_rgb_img, (depth_W, depth_H), interpolation=cv2.INTER_NEAREST)
+
+        # Depth 크롭 영역 저장 (옵션)
+        if save_dir is not None:
+            expanded_rgb_bgr = cv2.cvtColor(expanded_rgb_img, cv2.COLOR_RGB2BGR)
+            cv2.imwrite(os.path.join(save_dir, f"expanded_rgb_img{idx}_{i}.png"), expanded_rgb_bgr)
+
+        return resized_rgb_img
+
+def estimate_cube_center_from_rgbd(
+        rgb_image, depth_image, cam_position, cam_orientation,
+        color_lower, color_upper,
+        intrinsic_rgb, intrinsic_depth
+        ):
+        """
+        RGB + Depth 이미지에서 특정 색상 범위를 마스킹하여 해당 객체의 중심 좌표(world 좌표계 기준)를 추정합니다.
+
+        Args:
+            rgb_image (np.ndarray): RGB 이미지 (H, W, 3)
+            depth_image (np.ndarray): Depth 이미지 (H, W)
+            cam_position (np.ndarray): 카메라 위치 (3,)
+            cam_orientation (np.ndarray): 카메라 orientation (quaternion, 4,)
+            color_lower (np.ndarray): BGR 하한 (예: np.array([0, 0, 120]))
+            color_upper (np.ndarray): BGR 상한 (예: np.array([60, 60, 255]))
+
+        Returns:
+            np.ndarray or None: 추정된 cube 중심 (world 좌표계, shape=(3,)), 찾지 못하면 None
+        """
+
+        # 1. Depth 이미지 시야각 보정 및 리사이즈
+        expanded_rgb = scale_rgb_to_depth_fov(rgb_image, intrinsic_rgb, intrinsic_depth)
+
+        # RGB → BGR
+        rgb_bgr = cv2.cvtColor(expanded_rgb, cv2.COLOR_RGB2BGR)
+        mask = cv2.inRange(rgb_bgr, color_lower, color_upper)
+
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if len(contours) == 0:
+            return None
+
+        # 가장 큰 contour 선택
+        contour = max(contours, key=cv2.contourArea)
+        M = cv2.moments(contour)
+        if M["m00"] == 0:
+            return None
+
+        # 마스크에서 얻은 RGB 기준 중심 좌표
+        cx_rgb = int(M["m10"] / M["m00"])
+        cy_rgb = int(M["m01"] / M["m00"])
+
+        # RGB 픽셀 좌표를 Depth 해상도에 맞게 변환
+        depth_H, depth_W = depth_image.shape[:2]
+
+        cx_depth = int(round(cx_rgb))
+        cy_depth = int(round(cy_rgb))
+
+        # 유효성 검사
+        if not (0 <= cx_depth < depth_W and 0 <= cy_depth < depth_H):
+            print(f"[Warning] Scaled center ({cx_depth},{cy_depth}) out of bounds")
+            return None
+
+        z = depth_image[cy_depth, cx_depth]
+        print(f"==>> z: {z}")
+
+        if not np.isfinite(z) or z < 0.01:
+            return None
+        # Intrinsic
+        fx = intrinsic_depth['fx']
+        fy = intrinsic_depth['fy']
+        cx_intr = intrinsic_depth['cx']
+        cy_intr = intrinsic_depth['cy']
+        # W, H = my_robot.depth_cam.get_resolution()
+        # a_x = my_robot.depth_cam.get_horizontal_aperture()
+        # a_y = my_robot.depth_cam.get_vertical_aperture()
+        # f = my_robot.depth_cam.get_focal_length()
+        # fx = (f / a_x) * W
+        # fy = (f / a_y) * H
+        # cx_intr, cy_intr = W / 2, H / 2
+
+        x = -(cx_depth - cx_intr) * z / fx
+        y = -(cy_depth - cy_intr) * z / fy
+        point_cam = np.array([x, y, z])
+
+        R_world_cam = quat_to_rot_matrix(cam_orientation)
+
+        point_world = R_world_cam @ point_cam + cam_position
+
+        return point_world, cx_depth, cy_depth
+
+
 
 
 if __name__ == "__main__":
     depth_images = []
     camera_positions = []
     robot_is_moving = None
-    world, my_controller,my_robot, articulation_controller = setup_world()
+    world, my_controller, my_robot, articulation_controller = setup_world()
     
     state = "APPROACH_1"
     first_target_position = np.array([0.0, -0.5, 0.4])
@@ -252,18 +377,21 @@ if __name__ == "__main__":
     target_orientation_3 = euler_angles_to_quat(target_orientation_euler_3, degrees = True, extrinsic=False)
     target_orientation_4 = euler_angles_to_quat(target_orientation_euler_4, degrees = True, extrinsic=False)
     
-    W, H = my_robot.depth_cam.get_resolution()
-    a_x = my_robot.depth_cam.get_horizontal_aperture()
-    a_y = my_robot.depth_cam.get_vertical_aperture()
-    f = my_robot.depth_cam.get_focal_length()
-    
-    fx = (f / a_x) * W
-    print(f"==>> fx: {fx}")
-    fy = (f / a_y) * H
-    print(f"==>> fy: {fy}")
-    cx_intr, cy_intr = W / 2, H / 2
-    print(f"==>> cx_intr: {cx_intr}")
-    print(f"==>> cy_intr: {cy_intr}")
+    # RGB 카메라 intrinsic 예시
+    intrinsic_rgb = {
+        'fx': (my_robot.rgb_cam.get_focal_length() / my_robot.rgb_cam.get_horizontal_aperture()) * my_robot.rgb_cam.get_resolution()[0],
+        'fy': (my_robot.rgb_cam.get_focal_length() / my_robot.rgb_cam.get_vertical_aperture()) * my_robot.rgb_cam.get_resolution()[1],
+        'cx': (my_robot.rgb_cam.get_resolution()[0] - 1) / 2,
+        'cy': (my_robot.rgb_cam.get_resolution()[1] - 1) / 2,
+    }    
+
+    # Depth 카메라 intrinsic 예시
+    intrinsic_depth = {
+        'fx': (my_robot.depth_cam.get_focal_length() / my_robot.depth_cam.get_horizontal_aperture()) * my_robot.depth_cam.get_resolution()[0],
+        'fy': (my_robot.depth_cam.get_focal_length() / my_robot.depth_cam.get_vertical_aperture()) * my_robot.depth_cam.get_resolution()[1],
+        'cx': (my_robot.depth_cam.get_resolution()[0] - 1) / 2,
+        'cy': (my_robot.depth_cam.get_resolution()[1] - 1) / 2,
+    }
 
     prev_robot_is_moving = False
     idx = 0 #사진 인덱스
@@ -283,7 +411,7 @@ if __name__ == "__main__":
                         depth_images.append(depth)
                         # camera_positions.append(camera_pose)
                         state = "APPROACH_2"
-
+            
             elif state == "APPROACH_2":
                 robot_approach(my_robot, second_target_position, target_orientation_2, robot_is_moving)
                 if robot_just_stopped:
