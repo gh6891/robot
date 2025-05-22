@@ -60,16 +60,19 @@ from utils.controllers.basic_manipulation_controller import BasicManipulationCon
 # 이미지 저장 디렉토리 설정
 save_dir = "/home/gh6891/robot/pushing/test_image"
 os.makedirs(save_dir, exist_ok=True)
+
 # ─────────────────────────────────────────────────────── #
-def generate_height_map(depth_images, camera_positions):
-    all_points = []
+def generate_height_map(depth_images, camera_poses, intrinsic_depth, map_resolution):
+    all_transformed_points = []
+    map_resolution=0.01 
     # camera_positions = [first_target_position, second_target_position, third_target_position]
-    for i in range(3):
+    for i in range(len(depth_images)):
         depth_img = depth_images[i]
 
         H, W = depth_img.shape # H :720, W :1280
-        fx = fy = 700  # 카메라 focal length 가정값
-        cx, cy = W / 2, H / 2
+        intrinsic_depth['fx']
+        fx, fy = intrinsic_depth['fx'], intrinsic_depth['fy']
+        cx, cy = intrinsic_depth['cx'], intrinsic_depth['cy']
 
         xmap, ymap = np.meshgrid(np.arange(W), np.arange(H))
         xmap = xmap.flatten()
@@ -80,49 +83,123 @@ def generate_height_map(depth_images, camera_positions):
         z = depth_flat[valid]
         x = (xmap[valid] - cx) * z / fx
         y = (ymap[valid] - cy) * z / fy
+        #카메라 좌표계의 3D포인트(N, 3)
         points = np.stack([x, y, z], axis=1)
+        points_camera_homogeneous = np.hstack((points, np.ones((points.shape[0], 1)))) # (N, 4)로 변환
+        #카메라 Transform Matrix를 사용하여 월드 좌표계로 변환
+        # P_world = T_world_camera @ P_camera_homogeneous (행렬 곱셈)
+        # T_world_camera는 (4,4), P_camera_homogeneous는 (N,4) 이므로, Transpose 해서 (4,N)으로 만들고 곱셈 후 다시 Transpose
+        transform_matrix = camera_poses[i] # 이 값은 4x4 행렬이어야 합니다.
+        transformed_points_homogeneous = (transform_matrix @ points_camera_homogeneous.T).T
+        
+        transformed_points_world_frame = transformed_points_homogeneous[:, :3]
 
-        # 로봇 포즈를 기준으로 변환
-        base_position = camera_positions[i]
-        transformed = points + base_position  # 월드 좌표로 이동
-        all_points.append(transformed)
+        all_transformed_points.append(transformed_points_world_frame)
+
+    if not all_transformed_points:
+        print("경고: 유효한 깊이 포인트가 없습니다. Height Map을 생성할 수 없습니다.")
+        return np.array([])
     
-    # 모든 포인트 병합
-    merged_points = np.concatenate(all_points, axis=0)
+    merged_points = np.concatenate(all_transformed_points, axis=0)
 
-    # height map 생성 (x-y 평면 기준 z 저장)
-    resolution = 0.01  # 1cm 간격
+    # Height Map 생성 (x-y 평면 기준 z 저장)
     x_vals = merged_points[:, 0]
     y_vals = merged_points[:, 1]
-    z_vals = merged_points[:, 2]
+    z_vals = merged_points[:, 2] # Z축이 Height (높이)에 해당
 
+    # Height Map의 경계 계산
     x_min, x_max = x_vals.min(), x_vals.max()
     y_min, y_max = y_vals.min(), y_vals.max()
 
-    grid_x = np.arange(x_min, x_max, resolution)
-    grid_y = np.arange(y_min, y_max, resolution)
-    height_map = np.full((len(grid_y), len(grid_x)), fill_value=np.nan)
+    # 그리드 축 생성 (최대값 포함을 위해 resolution 추가)
+    grid_x = np.arange(x_min, x_max + map_resolution, map_resolution)
+    grid_y = np.arange(y_min, y_max + map_resolution, map_resolution)
 
+    # Height Map 초기화 (NaN으로 채움)
+    height_map = np.full((len(grid_y), len(grid_x)), fill_value=np.nan, dtype=np.float32)
+    
+    # 각 3D 포인트를 해당 Height Map 셀에 매핑
     for x, y, z in zip(x_vals, y_vals, z_vals):
-        xi = int((x - x_min) / resolution)
-        yi = int((y - y_min) / resolution)
+        # 월드 좌표를 그리드 인덱스로 변환
+        xi = int((x - x_min) / map_resolution)
+        yi = int((y - y_min) / map_resolution)
+
+        # 그리드 범위 확인
         if 0 <= xi < len(grid_x) and 0 <= yi < len(grid_y):
+            # 한 셀에 여러 포인트가 있을 경우, 가장 낮은 Z 값(지면)을 취함
+            # 만약 가장 높은 점을 원하면 'z > height_map[yi, xi]'로 조건 변경
             if np.isnan(height_map[yi, xi]) or z < height_map[yi, xi]:
                 height_map[yi, xi] = z
-
-    # NaN → 0
-    height_map = np.nan_to_num(height_map, nan=0.0)
-
-    # 시각화
-    plt.imshow(height_map, cmap='viridis', origin='lower')
+    
+    # 6. 시각화 및 저장
+    plt.figure(figsize=(10, 8))
+    plt.imshow(height_map, cmap='viridis', origin='lower',
+               extent=[x_min, x_max, y_min, y_max]) # 실제 월드 좌표 범위를 플롯에 표시
     plt.colorbar(label='Height (m)')
-    plt.title("Merged Height Map from 3 Camera Views")
-    plt.xlabel("X Grid")
-    plt.ylabel("Y Grid")
-    plt.savefig(os.path.join(save_dir, f"merged_height_map{idx/3-1}.png"))
+    plt.title("Merged Height Map from Multiple Camera Views")
+    plt.xlabel("X-coordinate (m)")
+    plt.ylabel("Y-coordinate (m)")
+    
+    # 저장 파일명은 idx 변수가 없으므로, 필요에 따라 유니크하게 생성해야 합니다.
+    save_path = os.path.join(save_dir, "merged_height_map.png")
+    plt.savefig(save_path)
+    print(f"Height map saved to {save_path}")
     plt.close()
 
     return height_map
+
+    # NaN 값을 0.0으로 대체 (빈 공간을 0 높이로 간주)
+    height_map = np.nan_to_num(height_map, nan=0.0)
+
+    # # 모든 포인트 병합
+    # merged_points = np.concatenate(all_transformed_points, axis=0)
+
+    # # height map 생성 (x-y 평면 기준 z 저장)
+    # resolution = 0.01  # 1cm 간격
+    # x_vals = merged_points[:, 0]
+    # y_vals = merged_points[:, 1]
+    # z_vals = merged_points[:, 2]
+
+    # x_min, x_max = x_vals.min(), x_vals.max()
+    # y_min, y_max = y_vals.min(), y_vals.max()
+
+    # grid_x = np.arange(x_min, x_max, resolution)
+    # grid_y = np.arange(y_min, y_max, resolution)
+    # height_map = np.full((len(grid_y), len(grid_x)), fill_value=np.nan)
+
+    # for x, y, z in zip(x_vals, y_vals, z_vals):
+    #     xi = int((x - x_min) / resolution)
+    #     yi = int((y - y_min) / resolution)
+    #     if 0 <= xi < len(grid_x) and 0 <= yi < len(grid_y):
+    #         if np.isnan(height_map[yi, xi]) or z < height_map[yi, xi]:
+    #             height_map[yi, xi] = z
+
+    # # NaN → 0
+    # height_map = np.nan_to_num(height_map, nan=0.0)
+
+    # # 시각화
+    # plt.imshow(height_map, cmap='viridis', origin='lower')
+    # plt.colorbar(label='Height (m)')
+    # plt.title("Merged Height Map from 3 Camera Views")
+    # plt.xlabel("X Grid")
+    # plt.ylabel("Y Grid")
+    # plt.savefig(os.path.join(save_dir, f"merged_height_map{idx/3-1}.png"))
+    # plt.close()
+
+    # return height_map
+def get_camera_pose(robot):
+    # 카메라의 위치와 방향을 가져옵니다.
+    camera_position = robot.depth_cam.get_world_pose()[0]
+    print(f"==>> camera_position: {camera_position}")
+    camera_orientation = robot.depth_cam.get_world_pose()[1]
+    print(f"==>> camera_orientation: {camera_orientation}")
+    print(f"==>> camera_orientation: {quat_to_rot_matrix(camera_orientation)}")
+
+    # 카메라의 변환 행렬을 생성합니다.
+    camera_transform_matrix = np.eye(4)
+    camera_transform_matrix[:3, 3] = camera_position
+    camera_transform_matrix[:3, :3] = quat_to_rot_matrix(camera_orientation)
+    return camera_transform_matrix
 
 def setup_world():
     world= World(stage_units_in_meters=1.0)
@@ -207,8 +284,8 @@ def robot_approach(robot, target_position, target_orientation, is_moving):
     # controller의 동작이 끝남 여부를 확인
     
     if is_moving == False:
-        print(target_position, " >>> end_effector_orientation",robot._end_effector.get_world_poses()[1][0])
-        print(target_orientation, " >>> end_effector_position",robot._end_effector.get_world_poses()[0][0])
+        # print(target_position, " >>> end_effector_orientation",robot._end_effector.get_world_poses()[1][0])
+        # print(target_orientation, " >>> end_effector_position",robot._end_effector.get_world_poses()[0][0])
         my_controller.reset()
         
 def get_camera_image(robot, idx):
@@ -217,7 +294,7 @@ def get_camera_image(robot, idx):
     depth_clean = []
     if rgb is not None and depth is not None:
         rgb_bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-        depth_clean = np.where(np.isfinite(depth), depth, 0) # inf, nan > 0으로 변경
+        depth_clean = np.where(np.isfinite(depth), depth, 0) # inf, nan => 0으로 변경
         depth_norm = cv2.normalize(depth_clean, None, 0, 255, cv2.NORM_MINMAX)
         depth_gray = depth_norm.astype(np.uint8)
         cv2.imwrite(os.path.join(save_dir, f"rgb_pos_{idx}.png"), rgb_bgr)
@@ -356,21 +433,22 @@ def estimate_cube_center_from_rgbd(
 
 
 if __name__ == "__main__":
+    whether_generate_height_map = False
     depth_images = []
-    camera_positions = []
+    camera_poses = []
     robot_is_moving = None
     world, my_controller, my_robot, articulation_controller = setup_world()
     
     state = "APPROACH_1"
-    first_target_position = np.array([0.0, -0.5, 0.4])
-    second_target_position = np.array([0.0, -0.5, 0.4])
-    third_target_position = np.array([0.0, -0.5, 0.4])
+    first_target_position = np.array([0.4, 0.5, 0.4])
+    second_target_position = np.array([0.0, 0.5, 0.4])
+    third_target_position = np.array([-0.4, 0.5, 0.4])
 
 
-    target_orientation_euler_1 = np.array([0.0, 0.0, 0.0]) # euler angles
-    target_orientation_euler_2 = np.array([90.0, 0.0, 0.0]) # euler angles
-    target_orientation_euler_3 = np.array([90.0, 90.0, 0.0]) # euler angles
-    target_orientation_euler_4 = np.array([90.0, 90.0, 90.0]) # euler angles
+    target_orientation_euler_1 = np.array([180.0, -90.0, 0.0]) # euler angles
+    target_orientation_euler_2 = np.array([180.0, -90.0, 0.0]) # euler angles
+    target_orientation_euler_3 = np.array([180.0, -90.0, 0.0]) # euler angles
+    target_orientation_euler_4 = np.array([180.0, -90.0, 0.0]) # euler angles
 
     target_orientation_1 = euler_angles_to_quat(target_orientation_euler_1, degrees = True, extrinsic=False)
     target_orientation_2 = euler_angles_to_quat(target_orientation_euler_2, degrees = True, extrinsic=False)
@@ -384,7 +462,6 @@ if __name__ == "__main__":
         'cx': (my_robot.rgb_cam.get_resolution()[0] - 1) / 2,
         'cy': (my_robot.rgb_cam.get_resolution()[1] - 1) / 2,
     }    
-
     # Depth 카메라 intrinsic 예시
     intrinsic_depth = {
         'fx': (my_robot.depth_cam.get_focal_length() / my_robot.depth_cam.get_horizontal_aperture()) * my_robot.depth_cam.get_resolution()[0],
@@ -401,25 +478,32 @@ if __name__ == "__main__":
 
             robot_is_moving = my_robot.is_moving()
             robot_just_stopped = prev_robot_is_moving and (robot_is_moving == False)
-
             if state == "APPROACH_1":
                 robot_approach(my_robot, first_target_position, target_orientation_1, robot_is_moving)
                 if robot_just_stopped:
                     rgb, depth = get_camera_image(my_robot, "APPROACH_1")
+                    print(f"==>> rgb: {rgb}")
+                    print(f"==>> depth: {depth}")
                     if rgb is not None and depth is not None:
-                        # camera_pose = 
+                        print("여기까진왔다~~")
+                        camera_pose = get_camera_pose(my_robot)
+                        print(f"==>> camera_pose: {camera_pose}")
                         depth_images.append(depth)
-                        # camera_positions.append(camera_pose)
+                        camera_poses.append(camera_pose)
                         state = "APPROACH_2"
             
             elif state == "APPROACH_2":
                 robot_approach(my_robot, second_target_position, target_orientation_2, robot_is_moving)
                 if robot_just_stopped:
                     rgb, depth = get_camera_image(my_robot, "APPROACH_1")
+                    print(f"==>> rgb: {rgb}")
+                    print(f"==>> depth: {depth}")
+                    
                     if rgb is not None and depth is not None:
-                        # camera_pose = 
+                        camera_pose = get_camera_pose(my_robot)
+                        print(f"==>> camera_pose: {camera_pose}")
                         depth_images.append(depth)
-                        # camera_positions.append(camera_pose)
+                        camera_poses.append(camera_pose)
                         state = "APPROACH_3"
                         
 
@@ -428,10 +512,11 @@ if __name__ == "__main__":
                 if robot_just_stopped:
                     rgb, depth = get_camera_image(my_robot, "APPROACH_1")
                     if rgb is not None and depth is not None:
-                        # camera_pose = 
+                        camera_pose = get_camera_pose(my_robot)
+                        print(f"==>> camera_pose: {camera_pose}")
                         depth_images.append(depth)
-                        # camera_positions.append(camera_pose)
-                        state = "APPROACH_1"
+                        camera_poses.append(camera_pose)
+                        state = "GNERATE_HEIGHT_MAP"
                         depth_images = []
 
             # elif state == "APPROACH_4":
@@ -440,18 +525,21 @@ if __name__ == "__main__":
             #         rgb, depth = get_camera_image(my_robot, "APPROACH_1")
             #         if rgb is not None and depth is not None:
             #             depth_images.append(depth)
-            #             # camera_positions.append()
+            #             # camera_poses.append()
             #             print("depth shape : ", depth.shape)
             #             print("rgb shape : ", rgb.shape)
             #             state = "APPROACH_1"
             #             print(f"==>> state: {state}")
             #             depth_images = []
             
+            elif state == "GNERATE_HEIGHT_MAP" and whether_generate_height_map == False:
+                print("==>> state: ", state)
+                generate_height_map(depth_images, camera_poses, intrinsic_depth)
+                whether_generate_height_map = True
+
 
 
             prev_robot_is_moving = robot_is_moving
-            # generate_height_map(depth_images, camera_positions)
-
             idx += 1
                               
 
