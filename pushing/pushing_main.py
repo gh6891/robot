@@ -241,6 +241,7 @@ if __name__ == "__main__":
     second_target_position = np.array([0.0, -0.5, 0.4])
     third_target_position = np.array([0.0, -0.5, 0.4])
 
+
     target_orientation_euler_1 = np.array([0.0, 0.0, 0.0]) # euler angles
     target_orientation_euler_2 = np.array([90.0, 0.0, 0.0]) # euler angles
     target_orientation_euler_3 = np.array([90.0, 90.0, 0.0]) # euler angles
@@ -250,6 +251,19 @@ if __name__ == "__main__":
     target_orientation_2 = euler_angles_to_quat(target_orientation_euler_2, degrees = True, extrinsic=False)
     target_orientation_3 = euler_angles_to_quat(target_orientation_euler_3, degrees = True, extrinsic=False)
     target_orientation_4 = euler_angles_to_quat(target_orientation_euler_4, degrees = True, extrinsic=False)
+    
+    W, H = my_robot.depth_cam.get_resolution()
+    a_x = my_robot.depth_cam.get_horizontal_aperture()
+    a_y = my_robot.depth_cam.get_vertical_aperture()
+    f = my_robot.depth_cam.get_focal_length()
+    
+    fx = (f / a_x) * W
+    print(f"==>> fx: {fx}")
+    fy = (f / a_y) * H
+    print(f"==>> fy: {fy}")
+    cx_intr, cy_intr = W / 2, H / 2
+    print(f"==>> cx_intr: {cx_intr}")
+    print(f"==>> cy_intr: {cy_intr}")
 
     prev_robot_is_moving = False
     idx = 0 #사진 인덱스
@@ -265,55 +279,50 @@ if __name__ == "__main__":
                 if robot_just_stopped:
                     rgb, depth = get_camera_image(my_robot, "APPROACH_1")
                     if rgb is not None and depth is not None:
+                        # camera_pose = 
                         depth_images.append(depth)
-                        # camera_positions.append()
-                        print("depth shape : ", depth.shape)
-                        print("rgb shape : ", rgb.shape)
+                        # camera_positions.append(camera_pose)
                         state = "APPROACH_2"
-                        print(f"==>> state: {state}")
+
             elif state == "APPROACH_2":
                 robot_approach(my_robot, second_target_position, target_orientation_2, robot_is_moving)
                 if robot_just_stopped:
                     rgb, depth = get_camera_image(my_robot, "APPROACH_1")
                     if rgb is not None and depth is not None:
+                        # camera_pose = 
                         depth_images.append(depth)
-                        # camera_positions.append()
-                        print("depth shape : ", depth.shape)
-                        print("rgb shape : ", rgb.shape)
+                        # camera_positions.append(camera_pose)
                         state = "APPROACH_3"
-                        print(f"==>> state: {state}")
                         
 
             elif state == "APPROACH_3":
-                robot_approach(my_robot, second_target_position, target_orientation_3, robot_is_moving)
+                robot_approach(my_robot, third_target_position, target_orientation_3, robot_is_moving)
                 if robot_just_stopped:
                     rgb, depth = get_camera_image(my_robot, "APPROACH_1")
                     if rgb is not None and depth is not None:
+                        # camera_pose = 
                         depth_images.append(depth)
-                        # camera_positions.append()
-                        print("depth shape : ", depth.shape)
-                        print("rgb shape : ", rgb.shape)
-                        state = "APPROACH_4"
-                        print(f"==>> state: {state}")
-                        
-
-            elif state == "APPROACH_4":
-                robot_approach(my_robot, second_target_position, target_orientation_4, robot_is_moving)
-                if robot_just_stopped:
-                    rgb, depth = get_camera_image(my_robot, "APPROACH_1")
-                    if rgb is not None and depth is not None:
-                        depth_images.append(depth)
-                        # camera_positions.append()
-                        print("depth shape : ", depth.shape)
-                        print("rgb shape : ", rgb.shape)
+                        # camera_positions.append(camera_pose)
                         state = "APPROACH_1"
-                        print(f"==>> state: {state}")
                         depth_images = []
+
+            # elif state == "APPROACH_4":
+            #     robot_approach(my_robot, second_target_position, target_orientation_4, robot_is_moving)
+            #     if robot_just_stopped:
+            #         rgb, depth = get_camera_image(my_robot, "APPROACH_1")
+            #         if rgb is not None and depth is not None:
+            #             depth_images.append(depth)
+            #             # camera_positions.append()
+            #             print("depth shape : ", depth.shape)
+            #             print("rgb shape : ", rgb.shape)
+            #             state = "APPROACH_1"
+            #             print(f"==>> state: {state}")
+            #             depth_images = []
             
 
 
             prev_robot_is_moving = robot_is_moving
-            # generate_height_map(depth_images)
+            # generate_height_map(depth_images, camera_positions)
 
             idx += 1
                               
