@@ -34,7 +34,8 @@ from isaacsim.core.api.materials.preview_surface import PreviewSurface
 from isaacsim.core.cloner.grid_cloner import GridCloner
 from isaacsim.storage.native import find_nucleus_server
 from isaacsim.core.api.objects import DynamicCuboid
-from isaacsim.core.utils.rotations import euler_angles_to_quat, quat_to_euler_angles, quat_to_rot_matrix
+from isaacsim.core.utils.rotations import euler_angles_to_quat, quat_to_euler_angles, quat_to_rot_matrix, rot_matrix_to_quat
+from isaacsim.core.utils.xforms import get_world_pose
 
 
 
@@ -61,13 +62,15 @@ from utils.controllers.basic_manipulation_controller import BasicManipulationCon
 save_dir = "/home/gh6891/robot/pushing/test_image"
 os.makedirs(save_dir, exist_ok=True)
 
+
 # ─────────────────────────────────────────────────────── #
-def generate_height_map(depth_images, camera_poses, intrinsic_depth, map_resolution):
+def generate_height_map(depth_images, camera_poses, intrinsic_depth, map_resolution=0.003):
     all_transformed_points = []
-    map_resolution=0.01 
+    # print("depth images : ", depth_images)
     # camera_positions = [first_target_position, second_target_position, third_target_position]
     for i in range(len(depth_images)):
         depth_img = depth_images[i]
+        print(f"==>> depth_img: {depth_img.shape}")
 
         H, W = depth_img.shape # H :720, W :1280
         intrinsic_depth['fx']
@@ -81,8 +84,8 @@ def generate_height_map(depth_images, camera_poses, intrinsic_depth, map_resolut
 
         valid = depth_flat > 0.01
         z = depth_flat[valid]
-        x = (xmap[valid] - cx) * z / fx
-        y = (ymap[valid] - cy) * z / fy
+        x = -(xmap[valid] - cx) * z / fx
+        y = -(ymap[valid] - cy) * z / fy
         #카메라 좌표계의 3D포인트(N, 3)
         points = np.stack([x, y, z], axis=1)
         points_camera_homogeneous = np.hstack((points, np.ones((points.shape[0], 1)))) # (N, 4)로 변환
@@ -119,6 +122,7 @@ def generate_height_map(depth_images, camera_poses, intrinsic_depth, map_resolut
     height_map = np.full((len(grid_y), len(grid_x)), fill_value=np.nan, dtype=np.float32)
     
     # 각 3D 포인트를 해당 Height Map 셀에 매핑
+    print("계산 시작...")
     for x, y, z in zip(x_vals, y_vals, z_vals):
         # 월드 좌표를 그리드 인덱스로 변환
         xi = int((x - x_min) / map_resolution)
@@ -130,10 +134,10 @@ def generate_height_map(depth_images, camera_poses, intrinsic_depth, map_resolut
             # 만약 가장 높은 점을 원하면 'z > height_map[yi, xi]'로 조건 변경
             if np.isnan(height_map[yi, xi]) or z < height_map[yi, xi]:
                 height_map[yi, xi] = z
-    
+    print("계산 완료.")
     # 6. 시각화 및 저장
     plt.figure(figsize=(10, 8))
-    plt.imshow(height_map, cmap='viridis', origin='lower',
+    plt.imshow(height_map, cmap='terrain', origin='lower',
                extent=[x_min, x_max, y_min, y_max]) # 실제 월드 좌표 범위를 플롯에 표시
     plt.colorbar(label='Height (m)')
     plt.title("Merged Height Map from Multiple Camera Views")
@@ -187,13 +191,20 @@ def generate_height_map(depth_images, camera_poses, intrinsic_depth, map_resolut
     # plt.close()
 
     # return height_map
+
 def get_camera_pose(robot):
     # 카메라의 위치와 방향을 가져옵니다.
-    camera_position = robot.depth_cam.get_world_pose()[0]
-    print(f"==>> camera_position: {camera_position}")
-    camera_orientation = robot.depth_cam.get_world_pose()[1]
+    camera_position = get_world_pose("/World/ur5e/realsense")[0]
+    # print(f"==>> camera_position: {camera_position}")
+    camera_orientation = get_world_pose("/World/ur5e/realsense")[1]
     print(f"==>> camera_orientation: {camera_orientation}")
-    print(f"==>> camera_orientation: {quat_to_rot_matrix(camera_orientation)}")
+    
+
+    
+    # camera_orientation_euler = quat_to_euler_angles(camera_orientation, degrees=True)
+    
+    # print(f"==>> camera_orientation: {quat_to_euler_angles(camera_orientation, degrees= True)}")
+    # print(f"==>> camera_orientation: {quat_to_rot_matrix(camera_orientation)}")
 
     # 카메라의 변환 행렬을 생성합니다.
     camera_transform_matrix = np.eye(4)
@@ -260,11 +271,10 @@ def setup_world():
     my_robot.rgb_cam.initialize()
     my_robot.depth_cam.initialize()
     my_robot.depth_cam.add_distance_to_image_plane_to_frame()
-    return world, my_controller, my_robot, articulation_controller
+    return world, my_controller, my_robot, articulation_controller, cube
 
 
 def is_moving(robot, robot_is_moving):
-    print("test : ", robot_is_moving)
     if robot_is_moving is None:
         robot_is_moving = robot.is_moving()
         return robot_is_moving
@@ -274,7 +284,7 @@ def is_moving(robot, robot_is_moving):
 def robot_approach(robot, target_position, target_orientation, is_moving):
     # 선언한 my_controller를 사용하여 action 수행
     actions = my_controller.forward(
-        target_position=first_target_position,
+        target_position=target_position,
         end_effector_offset = np.array([0, 0, 0.0]),
         end_effector_orientation=target_orientation,
         current_joint_positions=robot.get_joints_state().positions
@@ -289,7 +299,7 @@ def robot_approach(robot, target_position, target_orientation, is_moving):
         my_controller.reset()
         
 def get_camera_image(robot, idx):
-    rgb = robot.rgb_cam.get_rgba()
+    rgb = robot.rgb_cam.get_rgb()
     depth = robot.depth_cam.get_depth()
     depth_clean = []
     if rgb is not None and depth is not None:
@@ -319,33 +329,26 @@ def scale_rgb_to_depth_fov(rgb_img, intrinsic_rgb, intrinsic_depth):
 
         rgb_W = rgb_img.shape[1]
         rgb_H = rgb_img.shape[0]
-
         # RGB 시야에 맞게 Depth 이미지 크기 조정 (가로, 세로)
         scale_x = np.tan(fov_depth_x / 2) / np.tan(fov_rgb_x / 2)
         scale_y = np.tan(fov_depth_y / 2) / np.tan(fov_rgb_y / 2)
-
         # RGB 이미지 크기 확장 (Depth 시야각에 맞추기 위해 비율 적용)
         expanded_width = int(rgb_W * scale_x)
         expanded_height = int(rgb_H * scale_y)
-
         # 확장된 이미지 크기 계산
         expanded_rgb_img = np.zeros((expanded_height, expanded_width, 3), dtype=np.uint8)
-
         # 원본 RGB 이미지를 확장된 중앙에 배치
         x_offset = (expanded_width - rgb_W) // 2
         y_offset = (expanded_height - rgb_H) // 2
         expanded_rgb_img[y_offset:y_offset+rgb_H, x_offset:x_offset+rgb_W] = rgb_img
-
         # Depth 해상도에 맞게 리사이즈
         depth_W = int(intrinsic_depth['cx'] * 2 + 1)
         depth_H = int(intrinsic_depth['cy'] * 2 + 1)
-
         resized_rgb_img = cv2.resize(expanded_rgb_img, (depth_W, depth_H), interpolation=cv2.INTER_NEAREST)
-
         # Depth 크롭 영역 저장 (옵션)
         if save_dir is not None:
             expanded_rgb_bgr = cv2.cvtColor(expanded_rgb_img, cv2.COLOR_RGB2BGR)
-            cv2.imwrite(os.path.join(save_dir, f"expanded_rgb_img{idx}_{i}.png"), expanded_rgb_bgr)
+            # cv2.imwrite(os.path.join(save_dir, f"expanded_rgb_img.png"), expanded_rgb_bgr)
 
         return resized_rgb_img
 
@@ -378,12 +381,14 @@ def estimate_cube_center_from_rgbd(
 
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if len(contours) == 0:
+            print("[Warning] No contours found in the mask")
             return None
 
         # 가장 큰 contour 선택
         contour = max(contours, key=cv2.contourArea)
         M = cv2.moments(contour)
         if M["m00"] == 0:
+            print("[Warning] No valid contour found")
             return None
 
         # 마스크에서 얻은 RGB 기준 중심 좌표
@@ -405,6 +410,7 @@ def estimate_cube_center_from_rgbd(
         print(f"==>> z: {z}")
 
         if not np.isfinite(z) or z < 0.01:
+            print("[Warning] Invalid depth value at the center pixel")
             return None
         # Intrinsic
         fx = intrinsic_depth['fx']
@@ -423,13 +429,38 @@ def estimate_cube_center_from_rgbd(
         y = -(cy_depth - cy_intr) * z / fy
         point_cam = np.array([x, y, z])
 
-        R_world_cam = quat_to_rot_matrix(cam_orientation)
-
+        # R_world_cam = quat_to_rot_matrix(cam_orientation)
+        R_world_cam = cam_orientation
         point_world = R_world_cam @ point_cam + cam_position
-
+    
         return point_world, cx_depth, cy_depth
 
+def pixel_to_mm(y_px, x_px, height_map, pixel_size_mm=25):
+    """
+    픽셀 좌표 (y, x)를 mm 좌표 (x_mm, y_mm)로 변환.
+    기준:
+    - 실세계 (0, 0)은 height map의 **하단 중심**
+    - 즉, (39, 40) 픽셀이 (0, 0)에 해당함
+    """
+    height_px, width_px = height_map.shape
+    x_mm = (x_px - (width_px / 2 - 0.5)) * pixel_size_mm
+    y_mm = (height_px - 1 - y_px) * pixel_size_mm  # 하단이 y=0
+    return x_mm, y_mm
+    # height_map shape = (40, 80)
 
+def save_original_heightmap(height_map, save_dir):
+    """
+    원본 height map을 이미지로 저장합니다.
+    """
+    # 이미지 1. 원본 height map 저장
+    extent = [-1000, 1000, 0, 1000]  # (left, right, bottom, top)
+    plt.imshow(height_map, cmap='terrain', extent=extent, origin='upper')
+    plt.title("Height Map")
+    plt.xlabel("X (mm)")
+    plt.ylabel("Y (mm)")
+    plt.colorbar(label="Height")
+    plt.savefig(os.path.join(save_dir, "height_map_only.png"))
+    plt.close()
 
 
 if __name__ == "__main__":
@@ -437,13 +468,20 @@ if __name__ == "__main__":
     depth_images = []
     camera_poses = []
     robot_is_moving = None
-    world, my_controller, my_robot, articulation_controller = setup_world()
+    world, my_controller, my_robot, articulation_controller, cube = setup_world()
     
     state = "APPROACH_1"
-    first_target_position = np.array([0.4, 0.5, 0.4])
-    second_target_position = np.array([0.0, 0.5, 0.4])
-    third_target_position = np.array([-0.4, 0.5, 0.4])
+    first_target_position = np.array([0.0, 0.2, 0.6])
+    second_target_position = np.array([0.0, 0.5, 0.6])
+    third_target_position = np.array([-0.5, 0.5, 0.6])
 
+    fourth_target_position = np.array([-0.5, 0.5, 0.6])
+    fith_target_position = np.array([-0.5, 0.5, 0.6])
+    sixth_target_position = np.array([-0.5, 0.5, 0.6])
+
+    seven_target_position = np.array([-0.5, 0.5, 0.6])
+    eight_target_position = np.array([-0.5, 0.5, 0.6])
+    nineth_target_position = np.array([-0.5, 0.5, 0.6])
 
     target_orientation_euler_1 = np.array([180.0, -90.0, 0.0]) # euler angles
     target_orientation_euler_2 = np.array([180.0, -90.0, 0.0]) # euler angles
@@ -469,6 +507,7 @@ if __name__ == "__main__":
         'cx': (my_robot.depth_cam.get_resolution()[0] - 1) / 2,
         'cy': (my_robot.depth_cam.get_resolution()[1] - 1) / 2,
     }
+    point_world, cx_depth, cy_depth = None, None, None
 
     prev_robot_is_moving = False
     idx = 0 #사진 인덱스
@@ -482,22 +521,33 @@ if __name__ == "__main__":
                 robot_approach(my_robot, first_target_position, target_orientation_1, robot_is_moving)
                 if robot_just_stopped:
                     rgb, depth = get_camera_image(my_robot, "APPROACH_1")
-                    print(f"==>> rgb: {rgb}")
-                    print(f"==>> depth: {depth}")
                     if rgb is not None and depth is not None:
-                        print("여기까진왔다~~")
                         camera_pose = get_camera_pose(my_robot)
-                        print(f"==>> camera_pose: {camera_pose}")
                         depth_images.append(depth)
                         camera_poses.append(camera_pose)
-                        state = "APPROACH_2"
-            
+                        print(f"==>> camera_position: {camera_pose[:3, 3]}")
+                        state = "GNERATE_HEIGHT_MAP"
+
+                        cam_position = camera_pose[:3, 3]
+                        cam_orientation = camera_pose[:3, :3]
+                        color_lower = np.array([0, 0, 50])
+                        color_upper = np.array([80, 80, 255])
+                        print("rgb.shape : ", rgb.shape)
+                        # results = estimate_cube_center_from_rgbd(rgb, depth, cam_position, cam_orientation, color_lower, color_upper,intrinsic_rgb, intrinsic_depth)
+                        # if results is not None:
+                        #     point_world, cx_depth, cy_depth = results
+                        #     print(f"==>> point_world: {point_world}")
+                        #     print(f"==>> cx_depth: {cx_depth}")
+                        #     print(f"==>> cy_depth: {cy_depth}")
+                        #     print(cube.get_world_pose()[0])
+                        # else:
+                        #     print("==>> results: 생성되지않음")
+                        #     print(cube.get_world_pose()[0])
+                            
             elif state == "APPROACH_2":
                 robot_approach(my_robot, second_target_position, target_orientation_2, robot_is_moving)
                 if robot_just_stopped:
-                    rgb, depth = get_camera_image(my_robot, "APPROACH_1")
-                    print(f"==>> rgb: {rgb}")
-                    print(f"==>> depth: {depth}")
+                    rgb, depth = get_camera_image(my_robot, "APPROACH_2")
                     
                     if rgb is not None and depth is not None:
                         camera_pose = get_camera_pose(my_robot)
@@ -505,24 +555,41 @@ if __name__ == "__main__":
                         depth_images.append(depth)
                         camera_poses.append(camera_pose)
                         state = "APPROACH_3"
+
+
+                        cam_position = camera_pose[:3, 3]
+                        cam_orientation = camera_pose[:3, :3]
+                        color_lower = np.array([0, 0, 120])
+                        color_upper = np.array([60, 60, 255])
+                        print("rgb.shape : ", rgb.shape)
+                       
                         
 
             elif state == "APPROACH_3":
                 robot_approach(my_robot, third_target_position, target_orientation_3, robot_is_moving)
                 if robot_just_stopped:
-                    rgb, depth = get_camera_image(my_robot, "APPROACH_1")
+                    rgb, depth = get_camera_image(my_robot, "APPROACH_3")
                     if rgb is not None and depth is not None:
                         camera_pose = get_camera_pose(my_robot)
-                        print(f"==>> camera_pose: {camera_pose}")
                         depth_images.append(depth)
                         camera_poses.append(camera_pose)
                         state = "GNERATE_HEIGHT_MAP"
-                        depth_images = []
+                        
+
+
+                        cam_position = camera_pose[:3, 3]
+                        cam_orientation = camera_pose[:3, :3]
+                        color_lower = np.array([0, 0, 120])
+                        color_upper = np.array([60, 60, 255])
+                        print("rgb.shape : ", rgb.shape)
+                       
+
+
 
             # elif state == "APPROACH_4":
             #     robot_approach(my_robot, second_target_position, target_orientation_4, robot_is_moving)
             #     if robot_just_stopped:
-            #         rgb, depth = get_camera_image(my_robot, "APPROACH_1")
+            
             #         if rgb is not None and depth is not None:
             #             depth_images.append(depth)
             #             # camera_poses.append()
@@ -536,8 +603,13 @@ if __name__ == "__main__":
                 print("==>> state: ", state)
                 generate_height_map(depth_images, camera_poses, intrinsic_depth)
                 whether_generate_height_map = True
+                depth_images = []
 
-
+                #비교용 원본 이미지 저장
+                load_path = os.path.join(save_dir, "heightmap_array.npy")
+                height_map = np.load(load_path)
+                print(load_path)
+                save_original_heightmap(height_map, save_dir)
 
             prev_robot_is_moving = robot_is_moving
             idx += 1

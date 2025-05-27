@@ -93,6 +93,7 @@ class TerrainCreation(BaseTask):
         # heightfield[7*num_rows:8*num_rows, :] = stepping_stones_terrain(new_sub_terrain(), stone_size=1.,
         #                                                                 stone_distance=1., max_height=0.5, platform_size=0.).height_field_raw
         
+        np.save("/home/gh6891/robot/pushing/test_image/heightmap_array", heightfield)
         print("heightfield.shape : ",heightfield.shape)
         print("heightfield.type : ",type(heightfield))
         # plt.figure(figsize=(10, 8))
