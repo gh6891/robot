@@ -111,8 +111,12 @@ def generate_height_map(depth_images, camera_poses, intrinsic_depth, map_resolut
     z_vals = merged_points[:, 2] # Z축이 Height (높이)에 해당
 
     # Height Map의 경계 계산
-    x_min, x_max = x_vals.min(), x_vals.max()
-    y_min, y_max = y_vals.min(), y_vals.max()
+    x_min, x_max = -1.0, 1.0 # x_vals.min(), x_vals.max()
+    y_min, y_max = 0.0, 1.0 # y_vals.min(), y_vals.max()
+    print(f"==>> y_min: {y_min}")
+    print(f"==>> y_max: {y_max}")
+    # x_min, x_max = -1000, 1000
+    # y_min, y_max = 0, 1000
 
     # 그리드 축 생성 (최대값 포함을 위해 resolution 추가)
     grid_x = np.arange(x_min, x_max + map_resolution, map_resolution)
@@ -138,7 +142,7 @@ def generate_height_map(depth_images, camera_poses, intrinsic_depth, map_resolut
     # 6. 시각화 및 저장
     plt.figure(figsize=(10, 8))
     plt.imshow(height_map, cmap='terrain', origin='lower',
-               extent=[x_min, x_max, y_min, y_max]) # 실제 월드 좌표 범위를 플롯에 표시
+               extent=[-1000, 1000, 0, 1000], vmin = -0.1, vmax = 0.1) # 실제 월드 좌표 범위를 플롯에 표시
     plt.colorbar(label='Height (m)')
     plt.title("Merged Height Map from Multiple Camera Views")
     plt.xlabel("X-coordinate (m)")
@@ -454,7 +458,7 @@ def save_original_heightmap(height_map, save_dir):
     """
     # 이미지 1. 원본 height map 저장
     extent = [-1000, 1000, 0, 1000]  # (left, right, bottom, top)
-    plt.imshow(height_map, cmap='terrain', extent=extent, origin='upper')
+    plt.imshow(height_map, cmap='terrain', extent=extent, origin='upper', vmin = -50, vmax = 50)
     plt.title("Height Map")
     plt.xlabel("X (mm)")
     plt.ylabel("Y (mm)")
