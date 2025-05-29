@@ -113,7 +113,8 @@ def generate_height_map(
     if not all_transformed_points:
         print("경고: 유효한 깊이 포인트가 없습니다. Height Map을 생성할 수 없습니다.")
         return np.array([])
-
+    
+    all_transformed_points = np.nan_to_num(all_transformed_points, nan=0.0)
     merged_points = np.concatenate(all_transformed_points, axis=0)
 
     # Height Map 생성 (x-y 평면 기준 z 저장)
@@ -151,6 +152,11 @@ def generate_height_map(
             # 만약 가장 높은 점을 원하면 'z > height_map[yi, xi]'로 조건 변경
             if np.isnan(height_map[yi, xi]) or z < height_map[yi, xi]:
                 height_map[yi, xi] = z
+
+    np.save("/home/gh6891/robot/pushing/test_image/detected_height_map", height_map)
+    print(f"==>> height_map.shape: {height_map.shape}")
+    print(f"==>> height_map.type: {type(height_map)}")
+
     print("계산 완료.")
     # 6. 시각화 및 저장
     plt.figure(figsize=(10, 8))
