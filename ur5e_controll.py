@@ -15,8 +15,8 @@ from isaacsim.robot.manipulators.grippers import ParallelGripper
 from isaacsim.core.utils.stage import add_reference_to_stage
 from isaacsim.core.utils.types import ArticulationAction
 
-from omni.isaac.core.utils.prims import is_prim_path_valid
-from omni.isaac.core.utils.prims import get_all_matching_child_prims
+# from omni.isaac.core.utils.prims import is_prim_path_valid
+# from omni.isaac.core.utils.prims import get_all_matching_child_prims
 import numpy as np
 
 world = World(stage_units_in_meters=1.0)
@@ -36,27 +36,35 @@ add_reference_to_stage(usd_path=robot_asset_path, prim_path="/World/ur5e")
 my_ur5 = world.scene.add(SingleManipulator(
     prim_path="/World/ur5e",
     name="ur5e_robbot",
-    # end_effector_prim_name="Gripper",
+    end_effector_prim_path="/World/ur5e/Gripper",
     ))
+
 print("my_ur5 is added")
 
-joints_default_positions = my_ur5.get_joint_positions()
-my_ur5.set_joints_default_state(positions=joints_default_positions)
+# my_ur5.set_joints_default_state(positions=joints_default_positions)
+
 world.scene.add_default_ground_plane()
-
 world.reset()
-
+joints_default_positions = my_ur5.get_joint_positions()
+arm_joint_indices = np.array([0, 1, 2, 3, 4, 5])
 articulation_controller = my_ur5.get_articulation_controller()
 
-# 모든 child prim 경로 출력
-print("\n--- All prims under /World ---")
-all_prims = get_all_matching_child_prims("/World")
-for prim in all_prims:
-    print(prim.GetPath())
-
-# 시뮬레이션 실행 (GUI 창이 떠서 확인 가능)
+i = 0
 while simulation_app.is_running():
     world.step(render=True)
-
-# 시뮬레이션 종료
+    if world.is_playing():
+        if world.current_time_step_index == 0:
+            world.reset()
+        i += 1
+        joints_default_positions[1] = -np.pi/2
+        joints_default_positions[2] = np.sin(i/100) * 0.628
+        arm_values = joints_default_positions[arm_joint_indices]
+        print(f"==>> joints_default_positions: {joints_default_positions}")
+        print(f"==>> arm_values: {arm_values}")
+        actions = ArticulationAction(joint_positions=arm_values, joint_indices=arm_joint_indices)
+        print(f"==>> actions: {actions}")
+        articulation_controller.apply_action(actions)
+        print("full: ", my_ur5.get_joint_positions())
+        
+        print(my_ur5.get_joint_positions)
 simulation_app.close()
