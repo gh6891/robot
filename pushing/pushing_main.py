@@ -544,29 +544,29 @@ if __name__ == "__main__":
     world, my_controller, my_robot, articulation_controller, cube = setup_world()
 
     state = "APPROACH_1"
-    first_target_position = np.array([0.4, 0.4, 0.6])
-    second_target_position = np.array([0.4, 0.4, 0.6])
-    third_target_position = np.array([0.4, 0.4, 0.6])
+    first_target_position = np.array([0.424, 0.424, 0.6])
+    second_target_position = np.array([0.0, 0.6, 0.6])
+    third_target_position = np.array([-0.424, 0.424, 0.6])
 
-    fourth_target_position = np.array([0.5, 0.5, 0.6])
-    fith_target_position = np.array([0.0, 0.5, 0.6])
-    sixth_target_position = np.array([-0.5, 0.5, 0.6])
+    fourth_target_position = np.array([-0.5, 0.25, 0.6])
+    fith_target_position = np.array([0.0, 0.25, 0.6])
+    sixth_target_position = np.array([0.5, 0.25, 0.6])
 
     seven_target_position = np.array([-0.5, 0.75, 0.6])
     eight_target_position = np.array([0.0, 0.6, 0.6])
     nineth_target_position = np.array([0.5, 0.75, 0.6])
 
-    target_orientation_euler_1 = np.array([180.0, -90.0, 0.0])  # euler angles
-    target_orientation_euler_2 = np.array([180.0, -90.0, 0.0])  # euler angles
-    target_orientation_matrix = euler_to_rot_matrix(target_orientation_euler_2, degrees = True, extrinsic = False)
-    # offset_euler = np.array([0.0, 0.0, -45.0])
-    chin_up_offset = np.array([0.0, 0.0, -15.0])
+    target_orientation_euler_1 = np.array([180.0, -90.0, 10.0])  # euler angles
+    target_orientation_euler_2 = np.array([180.0, -90.0, -15.0])  # euler angles
+    # target_orientation_matrix = euler_to_rot_matrix(target_orientation_euler_2, degrees = True, extrinsic = False)
+    # # offset_euler = np.array([0.0, 0.0, -45.0])
+    # chin_up_offset = np.array([0.0, 0.0, 15.0])
 
-    # offset_matrix = euler_to_rot_matrix(offset_euler, degrees = True, extrinsic = False)
-    cnin_up_offset = euler_to_rot_matrix(chin_up_offset, degrees = True, extrinsic = False)
-    # real_matrix = target_orientation_matrix @ offset_matrix
-    real_matrix = target_orientation_matrix @ cnin_up_offset
-    target_orientation_euler_2 = matrix_to_euler_angles(real_matrix, degrees = True, extrinsic = False)
+    # # offset_matrix = euler_to_rot_matrix(offset_euler, degrees = True, extrinsic = False)
+    # cnin_up_offset = euler_to_rot_matrix(chin_up_offset, degrees = True, extrinsic = False)
+    # # real_matrix = target_orientation_matrix @ offset_matrix
+    # real_matrix = target_orientation_matrix @ cnin_up_offset
+    # target_orientation_euler_2 = matrix_to_euler_angles(target_orientation_euler_2, degrees = True, extrinsic = False)
     # print(f"==>> target_orientation_euler_2: {target_orientation_euler_2}")
     target_orientation_euler_3 = np.array([180.0, -90.0, 0.0])  # euler angles
     target_orientation_euler_4 = np.array([180.0, -90.0, 0.0])  # euler angles
@@ -640,7 +640,7 @@ if __name__ == "__main__":
                 robot_approach(
                     my_robot,
                     first_target_position,
-                    target_orientation_1,
+                    target_orientation_2,
                     robot_is_moving,
                 )
                 if robot_just_stopped:
@@ -707,7 +707,7 @@ if __name__ == "__main__":
                 robot_approach(
                     my_robot,
                     fourth_target_position,
-                    target_orientation_3,
+                    target_orientation_1,
                     robot_is_moving,
                 )
                 if robot_just_stopped:
@@ -728,7 +728,7 @@ if __name__ == "__main__":
                 robot_approach(
                     my_robot,
                     fith_target_position,
-                    target_orientation_3,
+                    target_orientation_1,
                     robot_is_moving,
                 )
                 if robot_just_stopped:
@@ -749,7 +749,7 @@ if __name__ == "__main__":
                 robot_approach(
                     my_robot,
                     sixth_target_position,
-                    target_orientation_3,
+                    target_orientation_1,
                     robot_is_moving,
                 )
                 if robot_just_stopped:
@@ -758,7 +758,7 @@ if __name__ == "__main__":
                         camera_pose = get_camera_pose(my_robot)
                         depth_images.append(depth)
                         camera_poses.append(camera_pose)
-                        state = "APPROACH_7"
+                        state = "GNERATE_HEIGHT_MAP"
 
                         cam_position = camera_pose[:3, 3]
                         cam_orientation = camera_pose[:3, :3]
