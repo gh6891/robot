@@ -40,8 +40,8 @@ def random_gaussian_terrain(
         downsampled_scale = terrain.horizontal_scale
 
     # Generate a base uniform noise terrain (optional, can be removed if only mountains are desired)
-    min_height_discrete = int(-0.01 / terrain.vertical_scale)
-    max_height_discrete = int(0.01 / terrain.vertical_scale)
+    min_height_discrete = int(-0.05 / terrain.vertical_scale)
+    max_height_discrete = int(0.05 / terrain.vertical_scale)
     heights_range = np.arange(min_height_discrete, max_height_discrete + 1)
     height_field_downsampled_base = np.random.choice(
         heights_range,
@@ -125,7 +125,7 @@ def random_uniform_terrain(
 
     """
     if downsampled_scale is None:
-        downsampled_scale = terrain.horizontal_scale #0.25
+        downsampled_scale = terrain.horizontal_scale #0.025
 
     # switch parameters to discrete units
     min_height = int(min_height / terrain.vertical_scale)  #-0.05/ 0.005 = -10
@@ -136,6 +136,8 @@ def random_uniform_terrain(
 
 
     heights_range = np.arange(min_height, max_height + step, step) #[-10~10]
+    print(f"==>> heights_range: {heights_range}")
+    print(f"==>> heights_range.shape: {heights_range.shape}")
     height_field_downsampled = np.random.choice(
         heights_range,
         (
@@ -143,10 +145,12 @@ def random_uniform_terrain(
             int(terrain.length * terrain.horizontal_scale / downsampled_scale), #2.0 * 0.025 / 0.1 = 0.5
         ),
     )
+    print(f"==>> height_field_downsampled.shape: {height_field_downsampled}")
 
     x = np.linspace(0, terrain.length * terrain.horizontal_scale, height_field_downsampled.shape[1])
     y = np.linspace(0, terrain.width * terrain.horizontal_scale, height_field_downsampled.shape[0])
     f = interpolate.RectBivariateSpline(y, x, height_field_downsampled)
+    print(f"==>> f: {f}")
     # f = interpolate.interp2d(x, y, height_field_downsampled, kind="linear")
     
     upsampled_factor = 1

@@ -81,8 +81,8 @@ class TerrainCreation(BaseTask):
         def new_sub_terrain(): 
             return SubTerrain(width=num_rows, length=num_cols, vertical_scale=vertical_scale, horizontal_scale=horizontal_scale)
 
-        # heightfield[:, :] = random_gaussian_terrain(new_sub_terrain(), downsampled_scale=0.1).height_field_raw
-        heightfield[:, :] = random_uniform_terrain(new_sub_terrain(), min_height=-0.05, max_height=0.05, step=0.001, downsampled_scale=0.1).height_field_raw
+        heightfield[:, :] = random_gaussian_terrain(new_sub_terrain(), downsampled_scale=0.1).height_field_raw
+        # heightfield[:, :] = random_uniform_terrain(new_sub_terrain(), min_height=-0.05, max_height=0.05, step=0.001, downsampled_scale=0.1).height_field_raw
         # heightfield[0:num_rows, :] = random_uniform_terrain(new_sub_terrain(), min_height=-0.3, max_height=0.3, step=0.01, downsampled_scale=0.5).height_field_raw
         # heightfield[num_rows:2*num_rows, :] = sloped_terrain(new_sub_terrain(), slope=-0.5).height_field_raw
         # heightfield[2*num_rows:3*num_rows, :] = pyramid_sloped_terrain(new_sub_terrain(), slope=-0.5).height_field_raw

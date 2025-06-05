@@ -34,7 +34,6 @@ from isaacsim.core.cloner.grid_cloner import GridCloner
 from isaacsim.storage.native import find_nucleus_server
 from isaacsim.core.api.objects import DynamicCuboid
 from isaacsim.core.utils.rotations import (
-    matrix_to_euler_angles,
     euler_to_rot_matrix,
     euler_angles_to_quat,
     quat_to_euler_angles,
@@ -114,7 +113,7 @@ def generate_height_map(
         print("경고: 유효한 깊이 포인트가 없습니다. Height Map을 생성할 수 없습니다.")
         return np.array([])
     
-    all_transformed_points = np.nan_to_num(all_transformed_points, nan=0.0)
+    # all_transformed_points = np.nan_to_num(all_transformed_points, nan=0.0)
     merged_points = np.concatenate(all_transformed_points, axis=0)
 
     # Height Map 생성 (x-y 평면 기준 z 저장)
@@ -490,7 +489,7 @@ def pixel_to_mm(y_px, x_px, height_map, pixel_size_mm=25):
     """
     height_px, width_px = height_map.shape
     x_mm = (x_px - (width_px / 2 - 0.5)) * pixel_size_mm
-    y_mm = (height_px - 1 - y_px) * pixel_size_mm  # 하단이 y=0
+    y_mm = (height_px - 0.5 - y_px) * pixel_size_mm  # 하단이 y=0
     return x_mm, y_mm
     # height_map shape = (40, 80)
 
@@ -501,6 +500,7 @@ def save_original_heightmap(height_map, save_dir):
     """
     # 이미지 1. 원본 height map 저장
     extent = [-1000, 1000, 0, 1000]  # (left, right, bottom, top)
+    plt.figure(figsize=(10, 8))
     plt.imshow(
         height_map, cmap="terrain", extent=extent, origin="upper", vmin=-50, vmax=50
     )
