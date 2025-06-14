@@ -81,8 +81,8 @@ class TerrainCreation(BaseTask):
         def new_sub_terrain(): 
             return SubTerrain(width=num_rows, length=num_cols, vertical_scale=vertical_scale, horizontal_scale=horizontal_scale)
 
-        heightfield[:, :] = random_gaussian_terrain(new_sub_terrain(), downsampled_scale=0.1).height_field_raw
-        # heightfield[:, :] = random_uniform_terrain(new_sub_terrain(), min_height=-0.05, max_height=0.05, step=0.001, downsampled_scale=0.1).height_field_raw
+        # heightfield[:, :] = random_gaussian_terrain(new_sub_terrain(), downsampled_scale=0.1).height_field_raw
+        heightfield[:, :] = random_uniform_terrain(new_sub_terrain(), min_height=-0.05, max_height=0.05, step=0.001, downsampled_scale=0.1).height_field_raw
         # heightfield[0:num_rows, :] = random_uniform_terrain(new_sub_terrain(), min_height=-0.3, max_height=0.3, step=0.01, downsampled_scale=0.5).height_field_raw
         # heightfield[num_rows:2*num_rows, :] = sloped_terrain(new_sub_terrain(), slope=-0.5).height_field_raw
         # heightfield[2*num_rows:3*num_rows, :] = pyramid_sloped_terrain(new_sub_terrain(), slope=-0.5).height_field_raw
@@ -106,6 +106,8 @@ class TerrainCreation(BaseTask):
 
         print("vertices 생성 완료")
         vertices, triangles = convert_heightfield_to_trimesh(heightfield, horizontal_scale=horizontal_scale, vertical_scale=vertical_scale, slope_threshold=1.5)
+        print(f"==>> vertices: {vertices.shape}")
+        print(f"==>> triangles: {triangles.shape}")
         position = np.array([-1.0, 1.0, 0])
         orientation = np.array([0.70711, 0.0, 0.0, -0.70711])
         add_terrain_to_stage(stage=self._stage, vertices=vertices, triangles=triangles, position=position, orientation=orientation)

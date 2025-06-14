@@ -47,6 +47,7 @@ from pxr import UsdPhysics, UsdLux, UsdShade, Sdf, Gf, UsdGeom, PhysxSchema
 
 from terrain_utils import *
 from terraincreation import TerrainCreation
+from path_planning import pixel_to_mm, save_original_heightmap, astar
 
 # 로봇path
 relative_path = "../utils/utils/assets"
@@ -247,7 +248,7 @@ def setup_world():
 
     # setup robot
     robot_usd_path = os.path.join(
-        absolute_path, "utils/assets/ur5e_handeye_gripper.usd"
+        absolute_path, "utils/assets/ur5e_handeye_stick.usd"
     )
     my_robot = UR5eHandeye(
         prim_path="/World/ur5e",  # should be unique
@@ -255,6 +256,7 @@ def setup_world():
         # should be unique, used to access the object
         usd_path=robot_usd_path,
         activate_camera=True,
+        activate_gripper=False
     )
     scene.add(my_robot)
 
@@ -426,14 +428,14 @@ def estimate_cube_center_from_rgbd(
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if len(contours) == 0:
         print("[Warning] No contours found in the mask")
-        return None
+        return None, None, None
 
     # 가장 큰 contour 선택
     contour = max(contours, key=cv2.contourArea)
     M = cv2.moments(contour)
     if M["m00"] == 0:
         print("[Warning] No valid contour found")
-        return None
+        return None, None, None
 
     # 마스크에서 얻은 RGB 기준 중심 좌표
     cx_rgb = int(M["m10"] / M["m00"])
@@ -448,14 +450,14 @@ def estimate_cube_center_from_rgbd(
     # 유효성 검사
     if not (0 <= cx_depth < depth_W and 0 <= cy_depth < depth_H):
         print(f"[Warning] Scaled center ({cx_depth},{cy_depth}) out of bounds")
-        return None
+        return None, None, None
 
     z = depth_image[cy_depth, cx_depth]
     print(f"==>> z: {z}")
 
     if not np.isfinite(z) or z < 0.01:
         print("[Warning] Invalid depth value at the center pixel")
-        return None
+        return None, None, None
     # Intrinsic
     fx = intrinsic_depth["fx"]
     fy = intrinsic_depth["fy"]
@@ -478,39 +480,6 @@ def estimate_cube_center_from_rgbd(
     point_world = R_world_cam @ point_cam + cam_position
 
     return point_world, cx_depth, cy_depth
-
-
-def pixel_to_mm(y_px, x_px, height_map, pixel_size_mm=25):
-    """
-    픽셀 좌표 (y, x)를 mm 좌표 (x_mm, y_mm)로 변환.
-    기준:
-    - 실세계 (0, 0)은 height map의 **하단 중심**
-    - 즉, (39, 40) 픽셀이 (0, 0)에 해당함
-    """
-    height_px, width_px = height_map.shape
-    x_mm = (x_px - (width_px / 2 - 0.5)) * pixel_size_mm
-    y_mm = (height_px - 0.5 - y_px) * pixel_size_mm  # 하단이 y=0
-    return x_mm, y_mm
-    # height_map shape = (40, 80)
-
-
-def save_original_heightmap(height_map, save_dir):
-    """
-    원본 height map을 이미지로 저장합니다.
-    """
-    # 이미지 1. 원본 height map 저장
-    extent = [-1000, 1000, 0, 1000]  # (left, right, bottom, top)
-    plt.figure(figsize=(10, 8))
-    plt.imshow(
-        height_map, cmap="terrain", extent=extent, origin="upper", vmin=-50, vmax=50
-    )
-    plt.title("Height Map")
-    plt.xlabel("X (mm)")
-    plt.ylabel("Y (mm)")
-    plt.colorbar(label="Height")
-    plt.savefig(os.path.join(save_dir, "height_map_only.png"))
-    plt.close()
-
 
 def process_approach_target(
     robot,
@@ -846,7 +815,8 @@ if __name__ == "__main__":
                 load_path = os.path.join(save_dir, "heightmap_array.npy")
                 height_map = np.load(load_path)
                 print(load_path)
-                save_original_heightmap(height_map, save_dir)
+                pixel_size_mm = 25
+                save_original_heightmap(height_map, pixel_size_mm)
 
             prev_robot_is_moving = robot_is_moving
             idx += 1

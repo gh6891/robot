@@ -108,8 +108,8 @@ def random_uniform_terrain(
     max_height,
     step=1,
     downsampled_scale=None,
-    hole_center_x = 1.0,
-    hole_center_y = 0.5,
+    hole_center_x = None,
+    hole_center_y = None,
     hole_radius = 0.04,
     hole_depth = 0.1,
 ):
@@ -160,15 +160,34 @@ def random_uniform_terrain(
     z_upsampled = np.rint(f(y_upsampled, x_upsampled))
     terrain.height_field_raw += z_upsampled.astype(np.int16)
 
-    # 구멍 만들기
+    # 랜덤 구멍 위치 생성 (경계에서 0.1m 이상 떨어진 위치)
+    if hole_center_x is None:
+        safe_margin_x = 0.1  # 최소 0.1m 경계 이격
+        hole_center_x = np.random.uniform(
+            low=safe_margin_x,
+            high=(terrain.length * terrain.horizontal_scale - safe_margin_x)
+        )
+    if hole_center_y is None:
+        safe_margin_y = 0.1
+        hole_center_y = np.random.uniform(
+            low=safe_margin_y,
+            high=(terrain.width * terrain.horizontal_scale - safe_margin_y)
+        )
+    # 중심 높이 추출
+    center_i = int(hole_center_y / terrain.horizontal_scale)
+    center_j = int(hole_center_x / terrain.horizontal_scale)
+    center_height = terrain.height_field_raw[center_i, center_j]
+    # 바닥 고정 높이 계산
     hole_depth_discrete = int(hole_depth / terrain.vertical_scale)
+    hole_bottom_height = center_height - hole_depth_discrete
+
     for i in range(terrain.width):
         for j in range(terrain.length):
             world_x = j * terrain.horizontal_scale
             world_y = i * terrain.horizontal_scale
             distance = np.sqrt((world_x - hole_center_x)**2 + (world_y - hole_center_y)**2)
             if distance <= hole_radius:
-                terrain.height_field_raw[i, j] = -10.0
+                terrain.height_field_raw[i, j] = hole_bottom_height
                 # terrain.height_field_raw[i, j] -= hole_depth_discrete
 
     return terrain
